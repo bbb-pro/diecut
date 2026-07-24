@@ -19,7 +19,7 @@ var DiecutConfig = (function () {
   var isLocal = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0';
 
   // === Replace this with your Cloudflare Worker URL ===
-  var PRODUCTION_API_URL = 'https://diecut-api.bbb-pro.workers.dev/api/box';
+  var PRODUCTION_API_URL = 'https://diecut-api.baoshenfei.workers.dev/api/box';
   // ===================================================
 
   return {
