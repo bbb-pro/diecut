@@ -4,8 +4,12 @@ node_modules/
 # WorkBuddy metadata
 .workbuddy/
 
-# FEFCO ArtiosCAD binary files (116MB, not suitable for git)
+# FEFCO data (not needed in repo)
 FEFCO/
+fefco_images/
+fefco_data.json
+fefco_data_clean.json
+extract_fefco.py
 
 # Temporary files
 *.dxf
