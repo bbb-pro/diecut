@@ -84,10 +84,28 @@ function convertPackmageGeometry(fe, ox, oy) {
 
   if (minX === Infinity) { minX = 0; minY = 0; maxX = 100; maxY = 100; }
 
+  // Dimensions: overall width / height of the die-cut layout, drawn outside
+  // the layout bounds so they never overlap the cut/crease lines.
+  var dimOffset = 16; // mm, offset from the layout edge
+  var dimensions = [
+    {
+      type: 'h',
+      x1: minX, x2: maxX, y1: minY,
+      offset: -dimOffset,
+      label: (maxX - minX).toFixed(1) + ' mm'
+    },
+    {
+      type: 'v',
+      x1: minX, y1: minY, y2: maxY,
+      offset: -dimOffset,
+      label: (maxY - minY).toFixed(1) + ' mm'
+    }
+  ];
+
   return {
     cuts: cuts,
     creases: creases,
-    dimensions: [],
+    dimensions: dimensions,
     labels: [],
     bbox: { minX: minX, minY: minY, maxX: maxX, maxY: maxY }
   };

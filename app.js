@@ -321,7 +321,7 @@
         var w = parseFloat((bb.maxX - bb.minX).toFixed(1));
         var h = parseFloat((bb.maxY - bb.minY).toFixed(1));
         var area = (w * h / 100).toFixed(1);
-        var liveBadge = bt.isLive ? '<span class="live-badge">LIVE</span>' : '<span class="default-badge">DEFAULT</span>';
+        var liveBadge = bt.isLive ? '<span class="live-badge">实时</span>' : '<span class="default-badge">默认</span>';
         info.innerHTML =
           '<div class="info-title">' + bt.name + '</div>' +
           '<div>' + liveBadge + '<span class="info-cat">' + bt.category + '</span></div>' +
@@ -425,7 +425,7 @@
       }
       var info = document.getElementById('boxInfo');
       if (info) {
-        info.innerHTML = '<div class="info-title">' + boxId + '</div><div class="info-warn">No geometry data available for this box type.</div>';
+        info.innerHTML = '<div class="info-title">' + boxId + '</div><div class="info-warn">该盒型暂无可用几何数据。</div>';
       }
     },
 
@@ -487,7 +487,7 @@
       tooltip.innerHTML =
         '<div class="tooltip-section">' +
           '<div class="tooltip-label">Die-Cut Preview</div>' +
-          '<div class="tooltip-svg">' + (svgHTML || '<span class="tooltip-nodata">No geometry</span>') + '</div>' +
+          '<div class="tooltip-svg">' + (svgHTML || '<span class="tooltip-nodata">暂无几何数据</span>') + '</div>' +
         '</div>' +
         '<div class="tooltip-section">' +
           '<div class="tooltip-label">Packmage Image</div>' +

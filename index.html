@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DieCut Designer - Packmage Box Library</title>
+<title>刀模设计器 - 纸盒刀模库</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,8 +11,8 @@
 <header id="toolbar">
   <div class="toolbar-left">
     <span class="logo">&#9670;</span>
-    <span class="app-title">DieCut Designer</span>
-    <span class="app-subtitle">Packmage Full Library</span>
+    <span class="app-title">刀模设计器</span>
+    <span class="app-subtitle">完整纸盒刀模库</span>
   </div>
   <div class="toolbar-center">
     <select id="boxTypeSelect"></select>
@@ -31,9 +31,9 @@
       PDF
     </button>
     <div class="toolbar-divider"></div>
-    <label class="toggle-label" title="Paper thickness compensation">
+    <label class="toggle-label" title="纸厚补偿">
       <input type="checkbox" id="chkCompensation">
-      <span>Compensation</span>
+      <span>纸厚</span>
     </label>
     <select id="paperThickness" disabled>
       <option value="0.3">0.3mm</option>
@@ -45,6 +45,8 @@
       <option value="1.5">1.5mm</option>
       <option value="2.0">2.0mm</option>
       <option value="3.0">3.0mm</option>
+      <option value="5.0">5.0mm</option>
+      <option value="7.0">7.0mm</option>
     </select>
   </div>
 </header>
@@ -53,13 +55,13 @@
 
   <aside id="paramPanel">
     <div class="panel-tabs">
-      <button class="panel-tab active" data-tab="library">Box Library</button>
-      <button class="panel-tab" data-tab="params">Parameters</button>
+      <button class="panel-tab active" data-tab="library">盒型库</button>
+      <button class="panel-tab" data-tab="params">参数</button>
     </div>
 
     <div id="tabLibrary" class="tab-content" style="display:block;">
       <div class="library-search">
-        <input type="text" id="boxSearch" placeholder="Search box ID or keyword..." class="search-input">
+        <input type="text" id="boxSearch" placeholder="搜索盒型编号或关键词…" class="search-input">
       </div>
       <div id="categoryList" class="category-list"></div>
       <div id="boxPreviewTooltip" class="box-preview-tooltip hidden"></div>
@@ -70,36 +72,36 @@
       <img id="currentBoxPreviewImg" src="" alt="" onerror="this.style.display='none'">
       <div id="currentBoxPreviewName"></div>
     </div>
-    <div class="panel-header">
-      <h2>Parameters</h2>
-      <button id="btnResetParams" title="Reset">
+      <div class="panel-header">
+        <h2>参数</h2>
+        <button id="btnResetParams" title="重置">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
       </button>
     </div>
     <div id="paramList"></div>
 
     <div class="panel-section">
-      <div class="panel-section-title">Display</div>
+      <div class="panel-section-title">显示</div>
       <label class="toggle-label">
         <input type="checkbox" id="chkDimensions" checked>
-        <span>Dimensions</span>
+        <span>尺寸标注</span>
       </label>
       <label class="toggle-label">
         <input type="checkbox" id="chkGrid" checked>
-        <span>Grid</span>
+        <span>网格</span>
       </label>
       <label class="toggle-label">
         <input type="checkbox" id="chkLabels">
-        <span>Labels</span>
+        <span>标签</span>
       </label>
     </div>
 
     <div class="panel-section">
-      <div class="panel-section-title">Canvas</div>
+      <div class="panel-section-title">画布</div>
       <div class="zoom-controls">
         <button id="btnZoomIn" class="zoom-btn">+</button>
         <button id="btnZoomOut" class="zoom-btn">&#8722;</button>
-        <button id="btnZoomFit" class="zoom-btn">FIT</button>
+        <button id="btnZoomFit" class="zoom-btn">适应</button>
         <button id="btnZoom100" class="zoom-btn">1:1</button>
       </div>
       <div class="zoom-display" id="zoomDisplay">100%</div>
@@ -117,11 +119,11 @@
     </div>
     <div id="canvasOverlay">
       <div class="overlay-info" id="overlayInfo"></div>
-      <div class="overlay-hint">Scroll to zoom &#183; Drag to pan &#183; Double-click to fit</div>
+      <div class="overlay-hint">滚轮缩放 &#183; 拖拽平移 &#183; 双击适应</div>
     </div>
     <div id="loadingOverlay" class="loading-overlay" style="display:none;">
       <div class="loading-spinner"></div>
-      <div class="loading-text">Updating geometry...</div>
+      <div class="loading-text">正在更新刀模…</div>
     </div>
   </section>
 
