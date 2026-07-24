@@ -1,68 +1,63 @@
-# DieCut Designer — 修复概览
+# GitHub Pages 尺寸调整修复
 
-## 已完成的工作
+## 问题
+本地环境尺寸调整正常，但部署到 GitHub Pages 后失效。
 
-### 1. 移除FEFCO盒型，导入packmage全部盒型
-- 移除了旧的FEFCO盒型数据（boxTypes.js）
-- 从packmage.cn下载了全部1278个盒型的完整几何数据
-- 数据存储在 `packmage_data.js`（6.2MB），包含分类、目录、完整fe几何数组
+## 根因
+GitHub Pages 是纯静态文件托管，**无法运行 Node.js 服务器**（server.js）。前端的 `/api/box` 请求在 GitHub Pages 上直接 404，导致 packmage.cn API 调用失败，尺寸参数变化后刀模图无法更新。
 
-### 2. 修复参数调整功能
-**根因分析：** packmage.cn API 有速率限制机制 — 快速连续请求会返回加密的 `code` 字段代替实际几何数据。
+同时测试确认 packmage.cn API **不支持 CORS**（响应头无 `Access-Control-Allow-Origin`），浏览器无法直接跨域调用。
 
-**修复方案：**
-- **服务器端请求队列**（server.js）：所有API请求序列化执行，最小间隔1.2秒
-- **自动重试机制**：当API返回 `code`（速率限制）时，自动等待1.5秒后重试，最多重试2次
-- **User-Agent头**：添加浏览器UA头提高API兼容性
-- **客户端防抖**（app.js）：参数调整后700ms防抖，减少不必要的API调用
+## 解决方案：Cloudflare Worker API 代理
 
-### 3. 关键技术发现
-- **packmage API参数格式**：`inPms` 使用大写参数名（`L=100,W=75,D=50,CAL=2,CHOOSE=3`）
-- **Layer 0参数**：只有 `pm` 数组中 `Layer=0` 的参数是用户可编辑的输入参数
-- **tid位掩码分类**：盒型的 `tid` 是位掩码，`tid=513 = 2^9 + 2^0` 表示同时属于分类0和分类9
-- **pm数据兼容**：旧55个盒型用 `{n,d,v,l}` 格式，新下载用 `{Name,Desc,DefaultV,Layer}` 格式
+### 新增文件
+- **worker.js** — Cloudflare Worker 脚本，代理 packmage.cn API（移植 server.js 的 callPackmageAPI 逻辑）
+- **config.js** — 环境检测：localhost 用 `/api/box`（server.js），GitHub Pages 用 Worker URL
 
-## 文件结构
-| 文件 | 用途 |
-|------|------|
-| `server.js` | Node.js服务器 + API代理（含请求队列和重试） |
-| `packmage_data.js` | 1278个盒型完整数据（6.2MB） |
-| `packmage_boxtypes.js` | 盒型构建逻辑 + API调用 + 几何转换 |
-| `app.js` | 主应用逻辑 + 参数调整 + 事件处理 |
-| `index.html` | 前端页面 |
-| `style.css` | 样式（含loading动画和状态标记） |
+### 修改文件
+- **packmage_boxtypes.js** — `xhr.open('POST', '/api/box')` → `DiecutConfig.apiBase`
+- **preview3d.js** — 同上
+- **index.html** — 在所有脚本前加载 `config.js`
+- **app.js** — API 回调后加 `renderer.fit()`，清理调试代码
+- **server.js** — 添加 `Cache-Control: no-cache` 头
 
-## 测试结果
-- ✅ 1278个盒型全部加载
-- ✅ 参数调整实时更新几何数据
-- ✅ 4个并发API请求全部成功（含之前失败的0201、D060、A038）
-- ✅ 请求队列自动管理间隔，避免速率限制
+## 部署步骤（2分钟）
 
-### 4. 修复弧线渲染方向（B007等盒型）
-**根因分析：** packmage几何引擎使用数学坐标系（Y轴向上，90°=上方），但SVG使用屏幕坐标系（Y轴向下，90°=下方）。旧代码直接用SVG角度解释 `sa/ea`，导致所有圆弧弯曲方向相反。
+### 第1步：部署 Cloudflare Worker
+1. 登录 https://dash.cloudflare.com
+2. 左侧菜单选 **Workers & Pages**
+3. 点 **Create** → **Create Worker**
+4. 名字填 `diecut-api`，点 **Deploy**
+5. 点 **Edit code**，把 `worker.js` 的全部内容粘贴进去
+6. 点 **Deploy** 保存
+7. 记下 Worker URL（格式：`https://diecut-api.<你的子域名>.workers.dev`）
 
-**修复方案：**
-- 在 `packmage_boxtypes.js` 的 `convertPackmageGeometry` 中，将弧线角度按数学坐标系解释
-- 转换到SVG坐标时取 `y = cy - r * sin(θ)`，使弧线方向正确
-- 同时规范化跨360°的角度差（`sa > ea` 时自动加360°）
+### 第2步：更新 config.js
+把 `config.js` 中的 `PRODUCTION_API_URL` 改成你的 Worker URL：
+```js
+var PRODUCTION_API_URL = 'https://diecut-api.你的子域名.workers.dev/api/box';
+```
 
-### 5. 添加盒型预览缩略图
-**实现：**
-- 左侧盒型库列表中每个盒型显示官方缩略图（40×40）
-- hover列表项时显示160px大图tooltip
-- 选中盒型后，参数面板顶部显示当前盒型预览图
-- 缩略图URL：`https://online.packmage.cn/Content/boximg/{id}-M.png`
-- 图片懒加载 + 加载失败自动隐藏
+### 第3步：提交推送
+```bash
+git add config.js && git commit -m "update worker url" && git push
+```
 
-## 测试结果
-- ✅ 1278个盒型全部加载
-- ✅ 参数调整实时更新几何数据
-- ✅ 4个并发API请求全部成功（含之前失败的0201、D060、A038）
-- ✅ 请求队列自动管理间隔，避免速率限制
-- ✅ B007等盒型的圆弧方向正确
-- ✅ 盒型库列表和参数面板显示预览缩略图
+### 第4步：验证
+打开 GitHub Pages 页面，切到 Parameters 标签改 L/W/D，等1~2秒刀模图应自动更新。
 
-## 已知限制
-- 极端参数值（如L=1000 for D060）可能超出API的有效范围
-- 服务器需要持续运行（`node server.js`），监听端口8093
-- 缩略图需要从 packmage.cn 在线加载
+## 技术架构
+```
+浏览器 (GitHub Pages)
+  ↓ POST DiecutConfig.apiBase
+  ↓
+Cloudflare Worker (worker.js)
+  ↓ POST + headers (Referer/Origin/UA)
+  ↓
+packmage.cn API
+  ↓ JSON (嵌套多层)
+  ↓
+Worker 解析+转换 → 返回标准化 JSON
+  ↓
+浏览器渲染 SVG
+```
