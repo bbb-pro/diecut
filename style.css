@@ -289,7 +289,7 @@ body {
 .dim-line { stroke: var(--dim-line); stroke-width: 0.2; fill: none; }
 .dim-text { font-size: 3px; fill: var(--dim-line); text-anchor: middle; font-family: "SF Mono", Consolas, monospace; }
 .dim-tick { stroke: var(--dim-line); stroke-width: 0.2; fill: none; }
-.panel-label { font-size: 4px; fill: #bbb; text-anchor: middle; font-weight: 600; }
+.panel-label { font-size: 5px; fill: #444; text-anchor: middle; font-weight: 700; paint-order: stroke; stroke: #fff; stroke-width: 0.8px; stroke-linejoin: round; }
 
 /* ===== Scrollbar ===== */
 #paramPanel::-webkit-scrollbar { width: 6px; }

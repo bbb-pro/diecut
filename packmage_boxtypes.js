@@ -13,6 +13,175 @@
 /* ===== Geometry cache (in-memory) ===== */
 var _geometryCache = {};
 
+/* ===== Auto-detect panels (enclosed faces) and label each with its size =====
+ * The packmage API only returns raw cut/crease polylines — no panel names.
+ * We reconstruct the planar graph, split segments at intersections, then trace
+ * every enclosed face (panel) and annotate it with its W×H bounding box. The
+ * outer/exterior face is discarded via a point-in-polygon test.
+ */
+function computePanelLabels(cuts, creases, bbox) {
+  function keyOf(p) {
+    return Math.round(p[0] * 100) / 100 + ',' + Math.round(p[1] * 100) / 100;
+  }
+  // Segment intersection (returns interior point only)
+  function segInt(p1, p2, p3, p4) {
+    var x1 = p1[0], y1 = p1[1], x2 = p2[0], y2 = p2[1];
+    var x3 = p3[0], y3 = p3[1], x4 = p4[0], y4 = p4[1];
+    var den = (x2 - x1) * (y4 - y3) - (y2 - y1) * (x4 - x3);
+    if (Math.abs(den) < 1e-9) return null;
+    var t = ((x3 - x1) * (y4 - y3) - (y3 - y1) * (x4 - x3)) / den;
+    var u = ((x3 - x1) * (y2 - y1) - (y3 - y1) * (x2 - x1)) / den;
+    if (t <= 1e-9 || t >= 1 - 1e-9 || u <= 1e-9 || u >= 1 - 1e-9) return null;
+    return { point: [x1 + t * (x2 - x1), y1 + t * (y2 - y1)] };
+  }
+
+  // Collect segments from polylines (arcs are already polyline-ized upstream)
+  var rawSegs = [];
+  function addPoly(pts) {
+    for (var i = 0; i < pts.length - 1; i++) rawSegs.push([pts[i], pts[i + 1]]);
+  }
+  cuts.forEach(addPoly);
+  creases.forEach(addPoly);
+  if (!rawSegs.length) return [];
+
+  // Split every segment at any intersection point
+  var S = rawSegs.map(function (s) { return { a: s[0], b: s[1], pts: [s[0], s[1]] }; });
+  var n = S.length;
+  for (var i = 0; i < n; i++) {
+    for (var j = i + 1; j < n; j++) {
+      var it = segInt(S[i].a, S[i].b, S[j].a, S[j].b);
+      if (!it) continue;
+      S[i].pts.push(it.point);
+      S[j].pts.push(it.point);
+    }
+  }
+
+  // Build vertex set + undirected adjacency
+  var verts = {};
+  var V = [];
+  var adj = {};
+  function vid(p) {
+    var k = keyOf(p);
+    if (!(k in verts)) { verts[k] = V.length; V.push(p); }
+    return verts[k];
+  }
+  function edge(p1, p2) {
+    var a = vid(p1), b = vid(p2);
+    if (a === b) return;
+    (adj[a] || (adj[a] = [])).push(b);
+    (adj[b] || (adj[b] = [])).push(a);
+  }
+  S.forEach(function (s) {
+    var a = s.a;
+    s.pts.sort(function (p1, p2) {
+      var d1 = (p1[0] - a[0]) * (p1[0] - a[0]) + (p1[1] - a[1]) * (p1[1] - a[1]);
+      var d2 = (p2[0] - a[0]) * (p2[0] - a[0]) + (p2[1] - a[1]) * (p2[1] - a[1]);
+      return d1 - d2;
+    });
+    for (var k = 0; k < s.pts.length - 1; k++) edge(s.pts[k], s.pts[k + 1]);
+  });
+
+  // Incident edges sorted by angle (for face tracing)
+  var inc = {};
+  for (var v in adj) {
+    inc[v] = adj[v].map(function (w) {
+      return { to: w, ang: Math.atan2(V[w][1] - V[v][1], V[w][0] - V[v][0]) };
+    });
+    inc[v].sort(function (a, b) { return a.ang - b.ang; });
+  }
+
+  // Trace every face by always turning left (CCW / minimal positive angle).
+  // inc[v] is angle-sorted, so the next edge is found by binary search in O(log n)
+  // instead of scanning the whole incident list — critical at hub vertices.
+  function nextIdx(arr, A) {
+    var lo = 0, hi = arr.length - 1, ans = arr.length;
+    while (lo <= hi) {
+      var mid = (lo + hi) >> 1;
+      if (arr[mid].ang > A) { ans = mid; hi = mid - 1; }
+      else lo = mid + 1;
+    }
+    return ans === arr.length ? 0 : ans; // wrap to the first if none is greater
+  }
+  var used = {};
+  var faces = [];
+  for (var v2 in adj) {
+    for (var ii = 0; ii < adj[v2].length; ii++) {
+      var w = adj[v2][ii];
+      if (used[v2 + '>' + w]) continue;
+      var cycle = [];
+      var cur = v2, nxt = w, guard = 0;
+      while (guard++ < 2000) {
+        var ek = cur + '>' + nxt;
+        if (used[ek]) break;          // edge already consumed by another face
+        used[ek] = true;
+        cycle.push(cur);
+        var dx = V[nxt][0] - V[cur][0], dy = V[nxt][1] - V[cur][1];
+        var A = Math.atan2(dy, dx);
+        var cand = inc[nxt];
+        var best = cand[nextIdx(cand, A)].to;
+        cur = nxt; nxt = best;
+        if (cur === v2 && nxt === w) break;
+      }
+      if (cycle.length >= 3) faces.push(cycle);
+    }
+  }
+
+  // Exterior test point (clearly outside the layout)
+  var ox = bbox.minX - 50, oy = bbox.minY - 50;
+  function pointIn(cyc, px, py) {
+    var inside = false;
+    for (var i = 0, j = cyc.length - 1; i < cyc.length; j = i++) {
+      var xi = V[cyc[i]][0], yi = V[cyc[i]][1];
+      var xj = V[cyc[j]][0], yj = V[cyc[j]][1];
+      if (((yi > py) !== (yj > py)) &&
+          (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) inside = !inside;
+    }
+    return inside;
+  }
+
+  var totalArea = (bbox.maxX - bbox.minX) * (bbox.maxY - bbox.minY);
+
+  // Collect valid interior panels. Drop the unbounded exterior face, any
+  // pathological self-intersecting face, off-canvas faces, and thin slivers
+  // (glue tabs / dust locks) whose real area is < 50% of their bounding box.
+  var cells = [];
+  faces.forEach(function (cyc) {
+    if (pointIn(cyc, ox, oy)) return; // skip the unbounded exterior face
+    var area = 0, minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    var cx = 0, cy = 0;
+    for (var i = 0; i < cyc.length; i++) {
+      var p = V[cyc[i]], q = V[cyc[(i + 1) % cyc.length]];
+      area += p[0] * q[1] - q[0] * p[1];
+      if (p[0] < minX) minX = p[0];
+      if (p[0] > maxX) maxX = p[0];
+      if (p[1] < minY) minY = p[1];
+      if (p[1] > maxY) maxY = p[1];
+      cx += p[0]; cy += p[1];
+    }
+    area = Math.abs(area) / 2;
+    if (area > totalArea) return;        // pathological self-intersecting faces
+    cx /= cyc.length; cy /= cyc.length;
+    if (cx < bbox.minX || cx > bbox.maxX || cy < bbox.minY || cy > bbox.maxY) return; // off-canvas
+    var bw = maxX - minX, bh = maxY - minY;
+    if (area < bw * bh * 0.5) return;    // thin sliver / tab → not a real panel
+    cells.push({ area: area, cx: cx, cy: cy, w: Math.round(bw), h: Math.round(bh) });
+  });
+
+  // Keep the largest panels only, capped so the view stays readable.
+  // Also drop tiny flaps / dust locks: only show panels whose area is at
+  // least 8% of the largest panel. cells are area-sorted, so we stop early.
+  cells.sort(function (a, b) { return b.area - a.area; });
+  var MAX_LABELS = 40;
+  var MIN_RATIO = 0.08;
+  var maxArea = cells.length ? cells[0].area : 0;
+  var labels = [];
+  for (var ci = 0; ci < cells.length && labels.length < MAX_LABELS; ci++) {
+    if (cells[ci].area < maxArea * MIN_RATIO) break;
+    labels.push({ x: cells[ci].cx, y: cells[ci].cy, text: cells[ci].w + '×' + cells[ci].h });
+  }
+  return labels;
+}
+
 /* ===== Convert packmage fe array to renderer format ===== */
 function convertPackmageGeometry(fe, ox, oy) {
   var cuts = [];
@@ -106,7 +275,7 @@ function convertPackmageGeometry(fe, ox, oy) {
     cuts: cuts,
     creases: creases,
     dimensions: dimensions,
-    labels: [],
+    labels: computePanelLabels(cuts, creases, { minX: minX, minY: minY, maxX: maxX, maxY: maxY }),
     bbox: { minX: minX, minY: minY, maxX: maxX, maxY: maxY }
   };
 }
