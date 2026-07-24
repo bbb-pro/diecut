@@ -181,7 +181,7 @@
 
         var title = document.createElement('div');
         title.className = 'param-derived-title';
-        title.textContent = 'Auto-Computed (Packmage)';
+        title.textContent = '自动计算参数';
         section.appendChild(title);
 
         bt.derived.forEach(function(d) {
@@ -341,7 +341,7 @@
       container.innerHTML = '';
 
       if (typeof PackmageBoxTypes === 'undefined') {
-        container.innerHTML = '<div class="lib-empty">Packmage data not loaded</div>';
+        container.innerHTML = '<div class="lib-empty">盒型数据未加载</div>';
         return;
       }
 
@@ -490,7 +490,7 @@
           '<div class="tooltip-svg">' + (svgHTML || '<span class="tooltip-nodata">暂无几何数据</span>') + '</div>' +
         '</div>' +
         '<div class="tooltip-section">' +
-          '<div class="tooltip-label">Packmage Image</div>' +
+          '<div class="tooltip-label">盒型参考图</div>' +
           '<img class="tooltip-thumb" src="' + thumbUrl + '" alt="" onerror="this.parentElement.style.display=\'none\'">' +
         '</div>' +
         '<div class="tooltip-id">' + boxId + ' &middot; ' + boxName + '</div>';
