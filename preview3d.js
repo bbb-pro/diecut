@@ -64,7 +64,7 @@ Preview3D._fetchAndRender = function(container, boxType, params) {
   container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:400px;color:#888;font-size:14px;">Loading 3D data...</div>';
 
   var xhr = new XMLHttpRequest();
-  xhr.open('POST', '/api/box', true);
+  xhr.open('POST', DiecutConfig.apiBase, true);
   xhr.setRequestHeader('Content-Type', 'application/json');
   xhr.onreadystatechange = function() {
     if (xhr.readyState !== 4) return;

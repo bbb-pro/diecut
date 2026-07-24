@@ -218,8 +218,10 @@ const server = http.createServer(function(req, res) {
     req.on('end', function() {
       try {
         var params = JSON.parse(body);
+        console.log('[API] POST /api/box boxID=' + params.boxID + ' inPms=' + (params.inPms || ''));
         enqueueApiCall(function(resolve, reject) {
           return callPackmageAPI(params).then(function(result) {
+            console.log('[API] Response: success=' + result.success + (result.box ? ' de.w=' + result.box.de.w : ' error=' + result.error));
             res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
             res.end(JSON.stringify(result));
             resolve();

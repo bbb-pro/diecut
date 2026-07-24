@@ -156,7 +156,7 @@
         var slider = document.createElement('input');
         slider.type = 'range';
         slider.min = p.min;
-        slider.max = Math.min(p.max, p.default * 5);
+        slider.max = Math.max(p.min + 1, Math.min(p.max, p.default * 5));
         slider.step = p.step || 1;
         slider.value = self.state.params[p.key];
 
@@ -225,7 +225,6 @@
       var bt = this.allBoxTypes[this.state.boxTypeIndex];
 
       if (!bt.updateGeometry) {
-        // Fallback for boxes without API support
         this.showLoading(false);
         this.render();
         return;
@@ -233,10 +232,15 @@
 
       bt.updateGeometry(this.state.params, function(success) {
         self.showLoading(false);
-        if (bt.compute) bt.compute(self.state.params);
-        self.render();
-        self.updateBoxInfo();
-        self.updateDerivedDisplay();
+        try {
+          if (bt.compute) bt.compute(self.state.params);
+          self.render();
+          self.renderer.fit();
+          self.updateBoxInfo();
+          self.updateDerivedDisplay();
+        } catch (e) {
+          console.error('[App] Render error after geometry update:', e);
+        }
 
         if (!success) {
           self.showStatus('参数超出范围或服务器繁忙，使用默认几何数据');
@@ -661,6 +665,9 @@
       });
     },
   };
+
+  // Expose for debugging
+  if (typeof window !== 'undefined') window.App = App;
 
   // Wait for DOM
   if (document.readyState === 'loading') {

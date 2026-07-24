@@ -141,7 +141,7 @@ function fetchGeometryFromAPI(boxID, inPms, callback) {
 
   var body = JSON.stringify({ boxID: boxID, inPms: inPms });
   var xhr = new XMLHttpRequest();
-  xhr.open('POST', '/api/box', true);
+  xhr.open('POST', DiecutConfig.apiBase, true);
   xhr.setRequestHeader('Content-Type', 'application/json');
   xhr.onreadystatechange = function() {
     if (xhr.readyState === 4) {
@@ -186,17 +186,19 @@ function buildPackmageBoxTypes() {
     for (var j = 0; j < pmItems.length; j++) {
       var pm = pmItems[j];
       var pName = pm.n || pm.Name;
-      var pDesc = pm.d || pm.Description || pName;
+      var pDesc = pm.d || pm.Desc || pm.Description || pName;
       var pDefault = pm.v !== undefined ? pm.v : pm.DefaultV;
       var pLayer = pm.l !== undefined ? pm.l : (pm.Layer !== undefined ? pm.Layer : 0);
 
       if (pLayer === 0) {
+        var pMin = Math.max(1, Math.round(pDefault * 0.3));
+        var pMax = Math.max(pMin + 1, Math.round(pDefault * 3));
         params.push({
           key: pName.toUpperCase(),
           label: pName + ' (' + pDesc + ')',
           default: pDefault,
-          min: Math.max(1, Math.round(pDefault * 0.3)),
-          max: Math.round(pDefault * 3),
+          min: pMin,
+          max: pMax,
           step: 1
         });
       } else {
