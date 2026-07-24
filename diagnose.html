@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DieCut API 诊断</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; background: #f5f5f5; }
+  h1 { color: #1a1a1a; }
+  .card { background: white; border-radius: 8px; padding: 20px; margin: 16px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .label { font-weight: 600; color: #555; }
+  .value { font-family: monospace; background: #f0f0f0; padding: 4px 8px; border-radius: 4px; word-break: break-all; display: block; margin-top: 4px; }
+  .ok { color: #16a34a; font-weight: 600; }
+  .err { color: #dc2626; font-weight: 600; }
+  pre { background: #1a1a1a; color: #4ade80; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 12px; max-height: 300px; overflow-y: auto; }
+  button { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  button:hover { background: #1d4ed8; }
+  .status { font-size: 13px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>🔧 DieCut API 诊断工具</h1>
+
+<div class="card">
+  <div class="label">1. 当前加载的 DiecutConfig.apiBase</div>
+  <span class="value" id="apiBase">检测中...</span>
+  <div class="status" id="apiBaseStatus"></div>
+</div>
+
+<div class="card">
+  <div class="label">2. 浏览器缓存的 app.js 版本检测</div>
+  <div class="status" id="versionStatus">检测中...</div>
+</div>
+
+<div class="card">
+  <div class="label">3. 直接测试 Cloudflare Worker API</div>
+  <button onclick="testWorker()">▶ 测试 Worker /api/box (L=350)</button>
+  <div class="status" id="workerStatus"></div>
+  <pre id="workerResult">点击上方按钮运行测试...</pre>
+</div>
+
+<div class="card">
+  <div class="label">4. 直接测试旧路径 /api/box (GitHub Pages 上应为 404)</div>
+  <button onclick="testLocal()">▶ 测试 /api/box 相对路径</button>
+  <div class="status" id="localStatus"></div>
+  <pre id="localResult">点击上方按钮运行测试...</pre>
+</div>
+
+<script src="config.js"></script>
+<script>
+  // 1. 显示 apiBase
+  try {
+    if (typeof DiecutConfig !== 'undefined') {
+      document.getElementById('apiBase').textContent = DiecutConfig.apiBase;
+      if (DiecutConfig.apiBase.indexOf('workers.dev') !== -1) {
+        document.getElementById('apiBaseStatus').innerHTML = '<span class="ok">✓ 使用 Cloudflare Worker（新版代码已加载）</span>';
+      } else {
+        document.getElementById('apiBaseStatus').innerHTML = '<span class="err">✗ 仍是旧路径 /api/box（浏览器用了缓存的旧代码，请 Ctrl+Shift+R 硬刷新）</span>';
+      }
+    } else {
+      document.getElementById('apiBase').textContent = 'DiecutConfig 未定义';
+      document.getElementById('apiBaseStatus').innerHTML = '<span class="err">✗ config.js 未加载（浏览器缓存了旧页面，请 Ctrl+Shift+R 硬刷新）</span>';
+    }
+  } catch(e) {
+    document.getElementById('apiBase').textContent = 'Error: ' + e.message;
+  }
+
+  // 2. 版本检测
+  document.getElementById('versionStatus').textContent = (typeof DiecutConfig !== 'undefined')
+    ? 'config.js 已加载，代码为最新版本'
+    : 'config.js 未加载，浏览器可能缓存了旧版本';
+
+  const WORKER_URL = 'https://diecut-api.baoshenfei.workers.dev/api/box';
+  const TEST_BODY = JSON.stringify({ boxID: '0001', inPms: 'L=350,W=200,D=180,CAL=0,CHOOSE=3' });
+
+  async function testWorker() {
+    const status = document.getElementById('workerStatus');
+    const result = document.getElementById('workerResult');
+    status.innerHTML = '<span>测试中...</span>';
+    result.textContent = '请求中...';
+    try {
+      const resp = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: TEST_BODY
+      });
+      const text = await resp.text();
+      result.textContent = 'HTTP ' + resp.status + '\n\n' + text;
+      if (resp.status === 200) {
+        try {
+          const json = JSON.parse(text);
+          if (json.success && json.box) {
+            status.innerHTML = '<span class="ok">✓ Worker 正常！de.w=' + json.box.de.w + '（L=350 正确）</span>';
+          } else {
+            status.innerHTML = '<span class="err">✗ Worker 返回了错误：' + (json.error || '未知错误') + '</span>';
+          }
+        } catch(e) {
+          status.innerHTML = '<span class="err">✗ 响应无法解析：' + e.message + '</span>';
+        }
+      } else {
+        status.innerHTML = '<span class="err">✗ HTTP ' + resp.status + '</span>';
+      }
+    } catch(e) {
+      result.textContent = '请求失败: ' + e.message;
+      status.innerHTML = '<span class="err">✗ 网络错误：' + e.message + '</span>';
+    }
+  }
+
+  async function testLocal() {
+    const status = document.getElementById('localStatus');
+    const result = document.getElementById('localResult');
+    status.innerHTML = '<span>测试中...</span>';
+    result.textContent = '请求中...';
+    try {
+      const resp = await fetch('/api/box', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: TEST_BODY
+      });
+      const text = await resp.text();
+      result.textContent = 'HTTP ' + resp.status + '\n\n' + text.substring(0, 500);
+      if (resp.status === 404) {
+        status.innerHTML = '<span class="ok">✓ 预期结果：GitHub Pages 上 /api/box 不存在（404），所以必须用 Worker</span>';
+      } else {
+        status.innerHTML = '<span class="err">? 意外响应 HTTP ' + resp.status + '</span>';
+      }
+    } catch(e) {
+      result.textContent = '请求失败: ' + e.message;
+      status.innerHTML = '<span class="err">✗ 网络错误：' + e.message + '</span>';
+    }
+  }
+</script>
+</body>
+</html>
