@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# WorkBuddy metadata
+.workbuddy/
+
+# FEFCO ArtiosCAD binary files (116MB, not suitable for git)
+FEFCO/
+
+# Temporary files
+*.dxf
+*.tmp
+test_output.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Server runtime
+*.log

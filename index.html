@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DieCut Designer - Packmage Box Library</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="toolbar">
+  <div class="toolbar-left">
+    <span class="logo">&#9670;</span>
+    <span class="app-title">DieCut Designer</span>
+    <span class="app-subtitle">Packmage Full Library</span>
+  </div>
+  <div class="toolbar-center">
+    <select id="boxTypeSelect"></select>
+  </div>
+  <div class="toolbar-right">
+    <button id="btnExportSVG" title="Export SVG">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      SVG
+    </button>
+    <button id="btnExportDXF" title="Export DXF for CAD">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      DXF
+    </button>
+    <button id="btnExportPDF" title="Export PDF">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+      PDF
+    </button>
+    <div class="toolbar-divider"></div>
+    <label class="toggle-label" title="Paper thickness compensation">
+      <input type="checkbox" id="chkCompensation">
+      <span>Compensation</span>
+    </label>
+    <select id="paperThickness" disabled>
+      <option value="0.3">0.3mm</option>
+      <option value="0.4">0.4mm</option>
+      <option value="0.5" selected>0.5mm</option>
+      <option value="0.6">0.6mm</option>
+      <option value="0.8">0.8mm</option>
+      <option value="1.0">1.0mm</option>
+      <option value="1.5">1.5mm</option>
+      <option value="2.0">2.0mm</option>
+      <option value="3.0">3.0mm</option>
+    </select>
+  </div>
+</header>
+
+<main id="main">
+
+  <aside id="paramPanel">
+    <div class="panel-tabs">
+      <button class="panel-tab active" data-tab="library">Box Library</button>
+      <button class="panel-tab" data-tab="params">Parameters</button>
+    </div>
+
+    <div id="tabLibrary" class="tab-content" style="display:block;">
+      <div class="library-search">
+        <input type="text" id="boxSearch" placeholder="Search box ID or keyword..." class="search-input">
+      </div>
+      <div id="categoryList" class="category-list"></div>
+      <div id="boxPreviewTooltip" class="box-preview-tooltip hidden"></div>
+    </div>
+
+    <div id="tabParams" class="tab-content" style="display:none;">
+    <div class="box-current-preview">
+      <img id="currentBoxPreviewImg" src="" alt="" onerror="this.style.display='none'">
+      <div id="currentBoxPreviewName"></div>
+    </div>
+    <div class="panel-header">
+      <h2>Parameters</h2>
+      <button id="btnResetParams" title="Reset">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+      </button>
+    </div>
+    <div id="paramList"></div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Display</div>
+      <label class="toggle-label">
+        <input type="checkbox" id="chkDimensions" checked>
+        <span>Dimensions</span>
+      </label>
+      <label class="toggle-label">
+        <input type="checkbox" id="chkGrid" checked>
+        <span>Grid</span>
+      </label>
+      <label class="toggle-label">
+        <input type="checkbox" id="chkLabels">
+        <span>Labels</span>
+      </label>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Canvas</div>
+      <div class="zoom-controls">
+        <button id="btnZoomIn" class="zoom-btn">+</button>
+        <button id="btnZoomOut" class="zoom-btn">&#8722;</button>
+        <button id="btnZoomFit" class="zoom-btn">FIT</button>
+        <button id="btnZoom100" class="zoom-btn">1:1</button>
+      </div>
+      <div class="zoom-display" id="zoomDisplay">100%</div>
+    </div>
+
+    <div class="panel-section panel-info">
+      <div id="boxInfo"></div>
+    </div>
+    </div>
+  </aside>
+
+  <section id="canvasArea">
+    <div id="canvasContainer">
+      <svg id="diecutSvg" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+    <div id="canvasOverlay">
+      <div class="overlay-info" id="overlayInfo"></div>
+      <div class="overlay-hint">Scroll to zoom &#183; Drag to pan &#183; Double-click to fit</div>
+    </div>
+    <div id="loadingOverlay" class="loading-overlay" style="display:none;">
+      <div class="loading-spinner"></div>
+      <div class="loading-text">Updating geometry...</div>
+    </div>
+  </section>
+
+</main>
+
+<script src="packmage_data.js"></script>
+<script src="packmage_boxtypes.js"></script>
+<script src="renderer.js"></script>
+<script src="exporter.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

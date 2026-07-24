@@ -1,0 +1,575 @@
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width,initial-scale=1,minimum-scale=1,maximum-scale=1,user-scalable=no" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+        <link rel="shortcut icon" type="image/png" href="/Content/Blob/resource/10000169/0/20220225114902.ico" media="screen" />
+    <meta name="robots" content="index,follow" />
+    <title>盒型库-包装魔术师CAD - 3D包装盒云设计编辑器 - 在线3D盒型设计渲染效果 - 包装设计渲染效果</title>
+    <meta name="keywords" content="印刷包装设计软件,CAD刀模软件,盒型结构图,包装盒3D云渲染展示,包装盒型刀模版图文件下载,包装结构设计,包装3D展示" />
+    <meta name="description" content="最简单的包装结构3D在线设计网站，拥有上千款盒型库，包括对插盒,扣底盒,平粘盒,天地盒,翻盖盒,书型盒,手提袋,礼品盒,展示架，通过调整参数自动生成刀模版图下载、导入设计稿十秒展示3D云渲染效果。3D渲染可嵌入企业网站，帮助企业投入低成本视觉包装营销。" />
+        <script>
+        var ___lan = 'zh';
+
+        var Lg = function (zh, en) {
+            return ___lan == "zh" ? (zh || "") : (en || "");
+        }
+
+    </script>
+    <script src="/diy/ref/jquery-2.1.4.min.js?v=1205054600"></script>
+<script src="/diy/ref/lodash-4.17.4.min.js?v=0125101300"></script>
+<script src="/diy/worktable/cm.min.js?v=1108150935"></script>
+<script src="/diy/ref/vue/vue-2.5.13.min.js?v=0725100100"></script>
+<script src="/diy/ref/vue/polyfill-6.23.0.min.js?v=0725100100"></script>
+<script src="/diy/ref/vue/vuex-3.0.1.min.js?v=0725100100"></script>
+<link href="/diy/ref/vue/iview-4.6.1.min.css?v=0314102612" rel="stylesheet" />
+<script src="/diy/ref/vue/iview-4.6.1.min.js?v=0227164753"></script>
+<script src="/diy/ref/vue/en-us-4.6.1.min.js?v=0227164753"></script>
+<script src="/diy/ref/moment/moment-2.22.2.min.js?v=0227094900"></script>
+<link href="/diy/ref/iconfont/css/font-awesome.min.css?v=1205054600" rel="stylesheet" />
+<script src="/diy/ref/qrcode.min.js?v=0419095738"></script>
+<link href="/diy/online/main.min.css?v=0331103207" rel="stylesheet" />
+<script src="/diy/js/acc.min.js?v=0812145136"></script>
+<script src="/diy/online/login.min.js?v=0318154700"></script>
+<script src="/diy/online/onlinepost.min.js?v=0611150529"></script>
+
+    
+    <link href="/diy/online/userstructs.min.css?v=1222013800" rel="stylesheet" />
+<script src="/diy/ref/vue/vue-lazyload.min.js?v=0121031100"></script>
+<script src="/diy/worktable/boxlib_zh.min.js?v=0713153458"></script>
+<script src="/diy/online/boxmanage.min.js?v=0409114202"></script>
+
+    <style>
+        #header .nav li[data-url='/online/boxes'] a, #header .nav li[data-url='/Online/Boxes'] a {
+            color: #ee0b5b;
+            border-bottom: 3px solid #ee0b5b;
+        }
+    </style>
+
+
+    
+
+        <script>
+            var _hmt = _hmt || [];
+            (function() {
+              var hm = document.createElement("script");
+              hm.src = "https://hm.baidu.com/hm.js?ce530bd612864f5aba0ab94d4f64c991";
+              var s = document.getElementsByTagName("script")[0];
+              s.parentNode.insertBefore(hm, s);
+            })();
+        </script>
+        
+
+</head>
+<body>
+
+        <!--header START-->
+        <div id="header" v-cloak style="display: flex;align-items: center;justify-content: space-between;min-width: 1550px;">
+
+                <div class="header">
+<div class="header_Panel">
+    <div class="header_top">
+        <a href="https://www.packmage.cn/" target="_blank" title="包装魔术师" class="logo"><img src="/Images/Online/logo.png"/></a>
+ &nbsp; &nbsp; &nbsp; &nbsp;
+        <ul class="nav list-paddingleft-2">
+            <li>
+                <p>
+                    <a href="/Online/Index" name="index">首页</a>
+                </p>
+            </li>
+            <li>
+                <p>
+                    <a href="/Online/Boxes" name="boxes">盒型库</a>
+                </p>
+            </li>
+            <li>
+                <p>
+                    <a href="/Online/Buymore" name="buy">购买</a>
+                </p>
+            </li>
+            <li>
+                <p>
+                    <a href="/Online/Works" name="works">作品秀</a>
+                </p>
+            </li>
+            <li>
+                <p>
+                    <a href="https://www.packmage.cn/Cad/CADdownLoad" name="cad">下载客户端</a>
+                </p>
+            </li>
+            <li>
+                <p>
+                    <a href="https://www.packmage.cn" name="official website" target="_blank">官网</a>
+                </p>
+            </li>          
+            <li>
+                <p>
+                    <a href="/Cad/Design" name="cad">旧版</a>
+                </p>
+            </li>
+        </ul><a href="javascript:;" title="020-84889508" class="tel" style="display: inline;">020-84889508</a>
+ &nbsp; &nbsp;
+    </div>
+</div>                </div>
+
+            <div id="user-bar" class="user-bar">
+                    <div class="user-bar-right" v-if="hasLogin">
+                        <a href="/Online/UserCenter" class="user-avt ">
+                            <img v-bind:src="user.avt" alt="头像">
+                        </a>
+                        <a href="/Online/UserCenter" class="user-text">
+                            <div class="user-name" v-bind:title="user.nickname">
+                                <span>{{user.nickname}}</span>
+                            </div>
+                            
+                        </a>
+                        <div class="pop-line" style="display:block">
+                            <div class="pop-line-list">
+                                <ul>
+                                        <li v-if="isAdmin"><a href="/superadmin" class="list-link"><Icon type="md-desktop" size="16" style="margin-right:10px;"></Icon><span class="list-title">超管后台</span></a></li>
+                                        <li v-if="isApnAdmin"><a href="/admin" class="list-link"><Icon type="md-desktop" size="16" style="margin-right:10px;"></Icon><span class="list-title">管理员后台</span></a></li>
+                                    <li><a href="/Online/UserCenter" class="list-link"><Icon type="md-person" size="16" style="margin-right:10px;"></Icon><span class="list-title">个人中心</span></a></li>
+                                    <li><a href="/Online/MyOrder" class="list-link"><Icon type="md-paper" size="16" style="margin-right:10px;"></Icon><span class="list-title">购买记录</span></a></li>
+                                    <li v-on:click="logout"><a class="list-link"><Icon type="md-power" size="16" style="margin-right:10px;"></Icon><span class="list-title">退出登录</span></a></li>
+                                    
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="login" v-else>
+                        <a v-on:click="popUpLogin">登录</a>
+                            <b> | </b>
+                            <a v-on:click="popUpRegister">注册</a>
+                    </div>
+            </div>
+            <modal width="400" v-model="showModal" footer-hide v-bind:closable="false" v-bind:mask-closable="false">
+
+
+
+<div class="login-wrap">
+    <div class="sign-wrap" v-if="showloginpanel">
+        <div class="sign-wrapper">
+            <div class="sign-page">
+
+                <div class="reg-head">
+                    <h4>登录</h4>
+                        <p class="to-login">
+                            还没有帐号？
+                            <a href="javascript:void(0);" class="registration" v-on:click="showloginpanel=false">免费注册</a>
+                        </p>
+                </div>
+                
+                <i-form ref="formLogin" v-bind:rules="ruleLogin" v-bind:model="loginData">
+                    <form-item prop="email">
+                        <i-input v-model="loginData.email" type="text" placeholder='邮箱' clearable></i-input>
+                    </form-item>
+                    <form-item prop="password">
+                        <i-input v-model="loginData.password" type="password" placeholder="密码" autocomplete="new-password" clearable @keyup.enter.native="toLogin()"></i-input>
+                    </form-item>
+                    <template v-if="verify.tcode==1">
+                        <form-item>
+                            <i-col span="14"><i-input v-model="verify.code" placeholder='请输入验证码 ----&gt;' autocomplete="new-password"></i-input></i-col>
+                            <i-col span="10"><div id="btnVerifyCode" v-on:click="resetCode4Login" style="margin:5px 0;cursor:pointer;"><img v-bind:src="verify.img" /></div></i-col>
+                        </form-item>
+                    </template>
+                    <template v-if="verify.tcode==11111">
+                        <div style="margin-bottom: 24px;">
+                            <a :href="verify.url" style="text-decoration:underline;color:blue;">{{verify.msg}}</a>
+                        </div>
+                    </template>
+                    <template v-if="verify.tcode==22222">
+                        <form-item>
+                            <i-col span="14">手机：{{verify.ph.substring(0, 3)+'****'+verify.ph.substring(7)}}</i-col>
+                            <i-col span="10">
+                                
+                                <i-button type="default" class="ol-btn-primary" style="float:right;" v-if="verify.phoneCodeBtnLoading" v-bind:loading="verify.phoneCodeBtnLoading" v-bind:disabled="verify.phoneCodeBtnLoading">{{verify.phoneCodeBtnText}}</i-button>
+                                <poptip placement="left" v-model="pop" v-if="!verify.phoneCodeBtnLoading" v-on:on-popper-show="resetCode4Login">
+                                    <i-button class="ol-btn-primary" style="float:right;" v-bind:loading="verify.phoneCodeBtnLoading" v-bind:disabled="verify.phoneCodeBtnLoading">{{verify.phoneCodeBtnText}}</i-button>
+                                    <div slot="content">
+                                        <i-input v-model="imgCode" v-on:on-change="enterCode4Login" placeholder='请输入下方文字' autocomplete="new-password"></i-input>
+                                        <div id="btnVerifyCode" v-on:click="resetCode4Login" style="margin:5px 0;cursor:pointer;"><img v-bind:src="verify.img" /></div>
+                                    </div>
+                                </poptip>
+                            </i-col>
+                        </form-item>
+                        <form-item>
+                            <i-input v-model="verify.code" type="text" placeholder='短信验证码' clearable></i-input>
+                        </form-item>
+                    </template>
+                    <div class="questionLink">
+                        <div>
+                            <Checkbox v-model="remember">记住密码</Checkbox>
+                            
+
+                        </div>
+                        <a class="registration forgetPWD" href="/Account/ForgotPassword">
+                            <span>忘记密码?</span>
+                        </a>
+
+                    </div>
+                    <form-item>
+                        <i-button type="primary" class="ol-btn-primary" long v-on:click="toLogin" v-bind:loading="loading">登录</i-button>
+                    </form-item>
+                        <form-item>
+                            
+                                    <i @click="openQQScanLogin" class="fa icon-qq fa-2x" style="margin:10px 2px;cursor:pointer;"></i>
+                                                                <i @click="isWxScanLogin=true" class="fa icon-wx fa-2x" style="margin:10px 2px;cursor:pointer;"></i>
+                        </form-item>
+                </i-form>
+            </div>
+
+        </div>
+    </div>
+    <div class="reg-wrap" v-else>
+        <div class="reg-head">
+            <h4>注册</h4><p class="to-login">已有账号？<a v-on:click="showloginpanel=true">立即登录</a></p>
+        </div>
+
+        <template v-if="isPhoneReg">
+
+            <div class="iform">
+                <template v-if="regStep1">
+                    <i-form ref="formRegister" v-bind:rules="ruleRegister" v-bind:model="regData">
+                        <form-item prop="phone">
+                            <i-input v-model="regData.phone" v-bind:readonly="phoneReadonly" placeholder='请输入手机号码' autocomplete="new-password"></i-input>
+                        </form-item>
+                        
+                        <form-item prop="verifyCode">
+                                <row class="clearfix">
+                                    <i-col span="13">
+                                        <i-input v-model="regData.verifyCode" v-bind:readonly="verifyCodeReadonly" placeholder='请输入短信验证码' autocomplete="new-password"></i-input>
+                                    </i-col>
+                                    <i-col span="8">
+                                        <i-button v-if="phoneCodeBtnLoading" v-bind:loading="phoneCodeBtnLoading" v-bind:disabled="phoneCodeBtnLoading">{{phoneCodeBtnText}}</i-button>
+                                        <poptip placement="left" v-model="pop" v-if="!phoneCodeBtnLoading" v-on:on-popper-show="resetCode">
+                                            <i-button v-bind:loading="phoneCodeBtnLoading" v-bind:disabled="phoneCodeBtnLoading">{{phoneCodeBtnText}}</i-button>
+                                            <div slot="content">
+                                                <i-input v-model="imgCode" v-on:on-change="enterCode" placeholder='请输入下方文字' autocomplete="new-password"></i-input>
+                                                <div id="btnVerifyCode" v-on:click="resetCode" style="margin:5px 0;cursor:pointer;"><img v-bind:src="img" /></div>
+                                            </div>
+                                        </poptip>
+                                    </i-col>
+                                </row>
+                            </form-item>
+                        <form-item prop="password">
+                            <i-input v-model="regData.password" type="password" placeholder='请输入密码' autocomplete="new-password"></i-input>
+                        </form-item>
+                        <form-item prop="passwdCheck">
+                            <i-input v-model="regData.passwdCheck" type="password" placeholder='请再次输入密码' autocomplete="new-password"></i-input>
+                        </form-item>
+                        <form-item>
+                            <i-button v-bind:disabled="!yesPackmage" v-on:click="sub" type="primary" long>下一步</i-button>
+                        </form-item>
+                    </i-form>
+                </template>
+                <template v-if="regStep2">
+                    <i-form ref="formInfo" v-bind:rules='ruleInfo' v-bind:model="regData">
+                        <form-item></form-item>
+                        <form-item style="text-align:center;"><div style="font-size:14px;">完善信息</div></form-item>
+                        <form-item prop="email">
+                            <i-input v-model="regData.email" placeholder='请输入邮箱' autocomplete="new-password"></i-input>
+                        </form-item>
+                        <form-item prop="nickName">
+                            <i-input v-model="regData.nickName" placeholder="昵称(昵称不可用���登陆)" autocomplete="new-password"></i-input>
+                        </form-item>
+                        <form-item prop="agentID" v-if="is_packmage_ag_host">
+                            <!---邀请码-->
+                            <i-input v-model="regData.agentID" placeholder="请输入邀请码" autocomplete="new-password"></i-input>
+                        </form-item>
+                        <form-item></form-item>
+                        <form-item>
+                            <i-button v-bind:disabled="!yesPackmage" v-bind:loading="goRegisterBtnLoading" v-on:click="goRegister" type="primary" long>完成注册</i-button>
+                        </form-item>
+                    </i-form>
+                </template>
+            </div>
+
+            <template>
+                <modal v-model="isOld" v-on:cancel="gotoUrl" title='欢迎老用户回归' width="300" v-bind:mask-closable=false v-bind:closable=false footer-hide>
+                    <i-form>
+                        <form-item style="text-align:center;">欢迎老用户回归</form-item>
+                            <form-item style="text-align:center;">（本次邀请码绑定无效）</form-item>
+                        <form-item>
+                            <i-button v-on:click="gotoUrl" type="primary" long>好的</i-button>
+                        </form-item>
+                    </i-form>
+                </modal>
+            </template>
+        </template>
+        <template v-else>
+            <i-form ref="formRegister" v-bind:rules="ruleRegister" v-bind:model="regData">
+                <form-item prop="email">
+                    <i-input v-model="regData.email" type="text" placeholder="Email" clearable></i-input>
+                </form-item>
+                <form-item prop="nickName">
+                    <i-input v-model="regData.nickName" type="text" placeholder="昵称" clearable></i-input>
+                </form-item>
+                <form-item prop="password">
+                    <i-input v-model="regData.password" type="password" placeholder="密码" autocomplete="new-password" clearable></i-input>
+                </form-item>
+                <form-item prop="passwdCheck">
+                    <i-input v-model="regData.passwdCheck" type="password" placeholder="确认密码" autocomplete="new-password" clearable></i-input>
+                </form-item>
+
+                <form-item prop="agentID" v-if="is_packmage_ag_host">
+                    <!---邀请码-->
+                    <i-input v-model="regData.agentID" type="text" placeholder='邀请码' autocomplete="new-password" clearable></i-input>
+                </form-item>
+                <form-item>
+                    <i-button type="primary" class="ol-btn-primary" long v-on:click="toRegister" v-bind:disabled="!yesPackmage" v-bind:loading="goRegisterBtnLoading">注册</i-button>
+                </form-item>
+            </i-form>
+        </template>
+    </div>
+</div>
+<modal v-model="isWxScanLogin" @on-visible-change="wxScanModalChange" v-bind:mask-closable="false" scrollable footer-hide title="二维码登陆" width="288">
+    <div id="divWxLoginCode" style="width:258px;height:258px;margin:0 auto;"> </div>
+</modal>
+                <div class="mask-close" v-on:click="showModal=false">
+                    <icon type="ios-close" size="40"></icon>
+                </div>
+            </modal>
+        </div>
+        <!--header END-->
+    <!--main START-->
+
+    <div class="main" id="main">
+        
+
+
+<div class="work-wrap" v-cloak>
+    <div class="search-panel">
+        <div class="search-box">
+            <input type="text" size="27" autocomplete="off" placeholder='盒型ID/描述' v-model="keyword" v-on:keyup.13="search" />
+            <a class="go" v-on:click="search"></a>
+        </div>
+    </div>
+    <div class="filter-panel">
+        <template v-for="(p,index) in catelst">
+            <div class="filter-item">
+                <div class="filter-item-title" v-bind:class="isInSelectedCate(p.TID)?'active':''" v-on:click="changeCateP(p.TID)">{{p.Name}}({{p.count}})</div>
+                <div class="filter-item-content">
+                    <a v-if="c.count&&c.count>0" class="filter-item-value" v-bind:class="isInSelectedCate(c.TID)?'active':''" v-for="(c,cindex) in p.children" v-on:click="changeCateC(c.TID,p.TID)">{{c.Name}}({{c.count}})</a>
+                </div>
+            </div>
+        </template>
+    </div>
+    <div class="filter-bar">
+        <div>
+            <label>查看方式</label>
+            <radio-group v-model="imgMode" data-event="1">
+                <radio v-for="opt in imgModeOpts" v-bind:key="opt.k" v-bind:label="opt.k">
+                    {{opt.v}}
+                </radio>
+            </radio-group>
+        </div>
+    </div>
+    <div class="box-list" v-if="filter.length>0">
+        <!---一行5个-->
+        <ul>
+            <li v-for="(v,idx) in filter" v-bind:key="idx">
+                <a v-bind:href="seoUrl(v[0])" style="width: 100%; display: block;" v-bind:title="_.truncate(v[6])">
+                    <div class="box-img">
+                        
+                        <img v-bind:src="v[7][imgMode]+v[0]+imgMode" />
+                    </div>
+                    <div class="box-name">{{v[0]+(!v[1]?' [内]':'')}}</div>
+                </a>
+                <div class="box-bottom" style="margin-bottom:10px;">
+                    <div class="box-tag" v-bind:title="v[6]">
+                        {{_.truncate(v[6])}}
+                    </div>
+                </div>
+            </li>
+        </ul>
+    </div>
+    <div v-else class="nodata">
+        
+
+<img src="/Images/Online/empty.png" />
+<p>咦~，还没有数据呢~</p>
+    </div>
+</div>
+
+
+
+
+    </div>
+    <!--main END-->
+
+
+        <!--footer START-->
+        <div class="footer">
+            <div class="copyright">
+                <!--自定义页脚协议-->
+<div class="footer_module">
+    <div class="container">
+        <div class="middle">
+            <ul>
+                <li>
+                    <div class="title">产品中心</div>
+                    <ol>
+                        <li>
+                            <a class="a-gray" href="https://www.packmage.cn/Cad/Index" target="_blank" title="包装魔术师CAD">
+                                <span>包装魔术师CAD</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="a-gray" href="https://www.packmage.cn/Ass/Index" target="_blank" title="包装业务助手">
+                                <span>包装业务助手</span>
+                            </a>
+                        </li>
+                            <li>
+                                <a class="a-gray" href="https://www.packmage.cn/Ass/Quotation" target="_blank" title="包装云报价">
+                                    <span>包装云报价</span>
+                                </a>
+                            </li>
+                    </ol>
+                </li>
+                    <li>
+                        <div class="title">关注我们</div>
+                        <ol>
+                            <li>
+                                <a class="a-gray" href="https://weibo.com/packmage" target="_blank" title="新浪微博">
+                                    <span>新浪微博</span>
+                                </a>
+                            </li>
+                            
+                            <li>
+                                <a class="a-gray" href="https://tieba.baidu.com/f?kw=%E5%8C%85%E8%A3%85%E9%AD%94%E6%9C%AF%E5%B8%88&amp;fr=index" target="_blank" title="百度贴吧">
+                                    <span>百度贴吧</span>
+                                </a>
+                            </li>
+                        </ol>
+                    </li>
+                <li>
+                    <div class="title">关于我们</div>
+                    <ol>
+                        <li>
+                            <a class="a-gray" href="https://www.packmage.cn/About" target="_blank" title="了解中为">
+                                <span>了解中为</span>
+                            </a>
+                        </li>
+                            <li>
+                                <a class="a-gray" href="https://www.packmage.cn/About/Talent" target="_blank" title="诚聘人才">
+                                    <span>诚聘人才</span>
+                                </a>
+                            </li>
+                        <li>
+                            <a class="a-gray" href="https://www.packmage.cn/About/News" target="_blank" title="新闻资讯">
+                                <span>新闻资讯</span>
+                            </a>
+                        </li>
+                    </ol>
+                </li>
+                <li>
+                    <div class="title">帮助中心</div>
+                    <ol>
+                        <li>
+                            <a class="a-gray" href="https://www.packmage.cn/About/FAQ" target="_blank" title="常见问题">
+                                <span>常见问题</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="a-gray" href="https://www.packmage.cn/About/Feedback" target="_blank" title="问题反馈">
+                                <span>问题反馈</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="a-gray" href="/Online/UserCenter" target="_blank" title="账户管理">
+                                <span>账户管理</span>
+                            </a>
+                        </li>
+                    </ol>
+                </li>
+                <li style="text-align:center;font-size:14px;color:#999;margin-top:-5px;border-left: 1px solid #eee;padding-left: 50px;">
+                    <div style="color:#0099ff;font-size: 25px;">020-84889508</div>
+                    <div>
+                        <div>周一至周五 9:00-18:00</div>
+                        <div>service@packmage.cn</div>
+                            <div>公众号：packmage</div>
+                      <div>客服QQ：932318041</div>
+                    </div>
+                </li>
+            </ul>
+        </div>
+    </div>
+</div>
+                    <p>2005-现在 广州中为信息技术有限公司 | 包装魔术师团队</p>
+                                    <p><a href='https://beian.miit.gov.cn/' target='_blank'>粤ICP备16056545号</a>　经营性ICP许可证号：粤B2-20120212　</p>
+            </div>
+        </div>
+        <!--footer END-->
+
+    <!-- req token-->
+<script>Cm.updateRequestToken(1784790198969, 'DvYAFFolilEvlPSBUr0H-iAx1g7uSEiVL06B6p0NZVufNy8FG8BnR8wvUg9Q6PVi3NIvqAIPsE9ZXPQmDPSi7PPz_1VtQ5SNqg8peqvWClg1');</script>
+
+    <script> window.$Lan = { code: 'zh', data: {} }; Online.genLanguageEn(); </script>
+    <script>
+        if(window.$Lan.code=="en"){
+            iview.lang('en-US')
+        }
+        $(function () {
+            var isPhoneReg = false;
+                 isPhoneReg = true;
+            var is_packmage_ag_host = false;
+            var user = {};
+
+            LoginTool.init({ el: "#header", lan: 'zh', isPhoneReg: isPhoneReg, is_packmage_ag_host: is_packmage_ag_host, user: user });
+
+
+
+             $(document.getElementsByName("boxes")).addClass("hover");
+            var fn = function(){
+                var mleft = ($(window).width()-1200) / 2;
+                if(mleft > 0){
+                    $("#header .header").css({"margin-left":mleft+"px"})
+                }
+            }
+
+            $(window).resize(fn);
+            fn();
+
+            LoginTool.doAfterLogin = function () {
+                //console.log("doAfterLogin");
+            };
+        });
+    </script>
+
+
+    
+    <script>
+        
+        $(function () {
+            var m = new BoxVue(0, 'zh',{});
+            m.addUsedBoxes([],{"ID":0,"Host":"online.packmage.cn","UserID":null,"PrivateWorks":5,"Avatar":0,"Json":null,"SignInCount":0,"PointsCount":0,"PointsNearExpireCount":0,"PointsUpdateDt":null,"ModifyDate":"0001-01-01 00:00:00"});
+            m.createVue();
+            LoginTool.doAfterLogin = function (t, token) {
+                m.usedBoxes();
+            }
+        })
+    </script>
+
+
+    
+        <script>
+            (function () {
+                var bp = document.createElement('script');
+                var curProtocol = window.location.protocol.split(':')[0];
+                if (curProtocol === 'https') {
+                    bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+                }
+                else {
+                    bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+                }
+                var s = document.getElementsByTagName("script")[0];
+                s.parentNode.insertBefore(bp, s);
+
+            })();
+        </script>
+
+</body>
+</html>
