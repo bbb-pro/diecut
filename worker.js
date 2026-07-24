@@ -48,6 +48,26 @@ export default {
       });
     }
 
+    // GET test endpoint (for diagnostics — calls packmage.cn directly)
+    if (url.pathname === '/test' && request.method === 'GET') {
+      try {
+        const fakeParams = { boxID: '0001', inPms: 'L=350,W=200,D=180,CAL=0,CHOOSE=3', tran: '0' };
+        const result = await callPackmageAPI(fakeParams, 0, ctx);
+        return new Response(JSON.stringify({
+          workerReached: true,
+          packmageResult: result
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ workerReached: true, error: e.message }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+        });
+      }
+    }
+
     return new Response('Not Found', { status: 404, headers: CORS_HEADERS });
   }
 };
