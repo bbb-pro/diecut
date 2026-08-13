@@ -12,6 +12,8 @@
       showDims: true,
       showGrid: true,
       showLabels: false,
+      viewMode: '2d',
+      artFace: 'M0',
     },
     renderer: null,
     currentData: null,
@@ -87,6 +89,7 @@
       if (bt.compute) bt.compute(this.state.params);
       this.renderParams();
       this.render();
+      if (this.state.viewMode === '3d') this.render3D();
       this.updateBoxInfo();
       this.updateCurrentPreview(bt);
       document.getElementById('boxTypeSelect').value = index;
@@ -238,6 +241,7 @@
           self.renderer.fit();
           self.updateBoxInfo();
           self.updateDerivedDisplay();
+          if (self.state.viewMode === '3d') self.render3D();
         } catch (e) {
           console.error('[App] Render error after geometry update:', e);
         }
@@ -296,6 +300,53 @@
         showLabels: this.state.showLabels,
       });
       this.renderer.render(data);
+    },
+
+    /* ===== 3D preview ===== */
+    render3D: function() {
+      if (typeof Preview3D === 'undefined' || !Preview3D.render) return;
+      var bt = this.allBoxTypes[this.state.boxTypeIndex];
+      var container = document.getElementById('preview3d');
+      if (!container) return;
+      Preview3D.render(container, bt, this.state.params);
+      var info = document.getElementById('boxInfo3D');
+      if (info) {
+        var p = this.state.params;
+        var dims = [];
+        if (p.L !== undefined) dims.push('L=' + p.L);
+        if (p.W !== undefined) dims.push('W=' + p.W);
+        if (p.D !== undefined) dims.push('D=' + p.D);
+        var badge = bt.isLive ? '<span class="live-badge">实时</span>' : '<span class="default-badge">默认</span>';
+        info.innerHTML = '<div class="info-title">' + bt.name + '</div>' +
+          '<div>' + badge + '<span class="info-cat">' + bt.category + '</span></div>' +
+          '<div>' + dims.join(' &middot; ') + ' mm</div>';
+      }
+    },
+
+    switchView: function(mode) {
+      this.state.viewMode = mode;
+      var svg = document.getElementById('canvasContainer');
+      var pv = document.getElementById('preview3d');
+      var b2 = document.getElementById('btnView2D');
+      var b3 = document.getElementById('btnView3D');
+      if (mode === '3d') {
+        if (svg) svg.style.display = 'none';
+        if (pv) pv.style.display = 'block';
+        if (b2) b2.classList.remove('active');
+        if (b3) b3.classList.add('active');
+        this.render3D();
+      } else {
+        if (svg) svg.style.display = '';
+        if (pv) pv.style.display = 'none';
+        if (b3) b3.classList.remove('active');
+        if (b2) b2.classList.add('active');
+        if (pv && typeof Preview3D !== 'undefined' && Preview3D._cleanup) Preview3D._cleanup(pv);
+      }
+    },
+
+    _artFaceName: function(key) {
+      var map = { M0: '正面', M5: '背面', M1: '左侧', M3: '右侧', M2: '顶面', M4: '底面' };
+      return map[key] || key;
     },
 
     updateBoxInfo: function() {
@@ -437,6 +488,9 @@
 
       document.getElementById('tabLibrary').style.display = tab === 'library' ? 'block' : 'none';
       document.getElementById('tabParams').style.display = tab === 'params' ? 'block' : 'none';
+      document.getElementById('tabThree').style.display = tab === 'threed' ? 'block' : 'none';
+      if (tab === 'threed') this.switchView('3d');
+      else if (tab === 'library' || tab === 'params') this.switchView('2d');
       if (tab !== 'library') this.hideBoxPreview();
     },
 
@@ -610,6 +664,60 @@
         tab.addEventListener('click', function() {
           self.switchTab(this.dataset.tab);
         });
+      });
+
+      // View switch (2D / 3D)
+      document.getElementById('btnView2D').addEventListener('click', function() { self.switchView('2d'); });
+      document.getElementById('btnView3D').addEventListener('click', function() { self.switchView('3d'); });
+
+      // Artwork (贴图): upload + face select + clear
+      var artUpload = document.getElementById('artUpload');
+      if (artUpload) {
+        artUpload.addEventListener('change', function() {
+          var file = this.files && this.files[0];
+          if (!file) return;
+          var reader = new FileReader();
+          reader.onload = function(e) {
+            Preview3D.setFaceTexture(self.state.artFace, e.target.result);
+            self.showStatus('已贴图到「' + self._artFaceName(self.state.artFace) + '」');
+          };
+          reader.readAsDataURL(file);
+        });
+      }
+      document.querySelectorAll('.art-face-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          document.querySelectorAll('.art-face-btn').forEach(function(b) { b.classList.remove('active'); });
+          btn.classList.add('active');
+          self.state.artFace = btn.dataset.face;
+          var st = document.getElementById('artFaceStatus');
+          if (st) st.textContent = '当前面：' + btn.textContent;
+        });
+      });
+      document.getElementById('btnClearArt').addEventListener('click', function() {
+        Preview3D.clearFaceTextures();
+        self.showStatus('已清除全部贴图');
+      });
+
+      // Fold animation (3D折叠)
+      var foldSlider = document.getElementById('foldSlider');
+      if (foldSlider) {
+        foldSlider.addEventListener('input', function() {
+          Preview3D.setFold(parseInt(this.value, 10) / 100);
+        });
+      }
+      document.getElementById('btnFoldPlay').addEventListener('click', function() {
+        var slider = document.getElementById('foldSlider');
+        if (slider) slider.value = 0;
+        Preview3D.setFold(0);
+        var startT = performance.now(), dur = 1300;
+        function step(t) {
+          var k = Math.min(1, (t - startT) / dur);
+          var prog = k;
+          Preview3D.setFold(prog);
+          if (slider) slider.value = Math.round(prog * 100);
+          if (k < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
       });
 
       // Search

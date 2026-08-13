@@ -57,6 +57,7 @@
     <div class="panel-tabs">
       <button class="panel-tab active" data-tab="library">盒型库</button>
       <button class="panel-tab" data-tab="params">参数</button>
+      <button class="panel-tab" data-tab="threed">3D 预览</button>
     </div>
 
     <div id="tabLibrary" class="tab-content" style="display:block;">
@@ -111,12 +112,64 @@
       <div id="boxInfo"></div>
     </div>
     </div>
+
+    <div id="tabThree" class="tab-content" style="display:none;">
+
+      <div class="panel-section">
+        <div class="panel-section-title">贴图</div>
+        <div class="art-upload-row">
+          <label class="art-file-label">
+            <input type="file" id="artUpload" accept="image/*" hidden>
+            <span>上传图片</span>
+          </label>
+          <button id="btnClearArt" class="art-clear-btn">清除贴图</button>
+        </div>
+        <div class="art-face-hint">选择要贴图的面，再上传图片：</div>
+        <div class="art-face-grid" id="artFaceGrid">
+          <button class="art-face-btn active" data-face="M0">正面</button>
+          <button class="art-face-btn" data-face="M5">背面</button>
+          <button class="art-face-btn" data-face="M1">左侧</button>
+          <button class="art-face-btn" data-face="M3">右侧</button>
+          <button class="art-face-btn" data-face="M2">顶面</button>
+          <button class="art-face-btn" data-face="M4">底面</button>
+        </div>
+        <div class="art-face-status" id="artFaceStatus">当前面：正面</div>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-section-title">3D 折叠</div>
+        <div class="fold-row">
+          <input type="range" id="foldSlider" min="0" max="100" value="100" step="1">
+          <button id="btnFoldPlay" class="fold-play-btn">播放动画</button>
+        </div>
+        <div class="fold-hint">0% = 平铺刀模 &middot; 100% = 立体盒</div>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-section-title">视角</div>
+        <div class="rot-row">
+          <label>水平 <input type="range" id="rotateY" min="-180" max="180" value="-30"></label>
+        </div>
+        <div class="rot-row">
+          <label>垂直 <input type="range" id="rotateX" min="-80" max="80" value="-20"></label>
+        </div>
+      </div>
+
+      <div class="panel-section panel-info">
+        <div id="boxInfo3D">切换到「3D 预览」并选盒型后，此区域显示立体效果。</div>
+      </div>
+    </div>
   </aside>
 
   <section id="canvasArea">
+    <div id="viewSwitch">
+      <button id="btnView2D" class="view-btn active">刀模图</button>
+      <button id="btnView3D" class="view-btn">3D 预览</button>
+    </div>
     <div id="canvasContainer">
       <svg id="diecutSvg" xmlns="http://www.w3.org/2000/svg"></svg>
     </div>
+    <div id="preview3d" style="display:none;"></div>
     <div id="canvasOverlay">
       <div class="overlay-info" id="overlayInfo"></div>
       <div class="overlay-hint">滚轮缩放 &#183; 拖拽平移 &#183; 双击适应</div>
@@ -134,6 +187,8 @@
 <script src="packmage_boxtypes.js"></script>
 <script src="renderer.js"></script>
 <script src="exporter.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="preview3d.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

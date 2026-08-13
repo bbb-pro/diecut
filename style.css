@@ -249,7 +249,7 @@ body {
 }
 #canvasContainer {
   width: 100%;
-  height: 100%;
+  height: calc(100% - 52px);
   cursor: grab;
 }
 #canvasContainer.dragging { cursor: grabbing; }
@@ -619,4 +619,134 @@ body {
   font-weight: 700;
   letter-spacing: 0.3px;
   margin-right: 6px;
+}
+
+/* ===== View switch (2D / 3D) ===== */
+#viewSwitch {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #ececec;
+  background: #fafafa;
+}
+.view-btn {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid #d8d8d8;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #333;
+  transition: all .15s;
+}
+.view-btn:hover { border-color: #3182ce; }
+.view-btn.active {
+  background: #3182ce;
+  color: #fff;
+  border-color: #3182ce;
+}
+
+#preview3d {
+  position: relative;
+  width: 100%;
+  height: calc(100% - 52px);
+  background: #f0f0f0;
+  overflow: hidden;
+}
+
+/* ===== Artwork (贴图) ===== */
+.art-upload-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.art-file-label {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  border: 1px dashed #3182ce;
+  border-radius: 6px;
+  background: #ebf4ff;
+  color: #3182ce;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.art-file-label:hover { background: #dbeafe; }
+.art-clear-btn {
+  padding: 8px 12px;
+  border: 1px solid #d8d8d8;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #666;
+}
+.art-clear-btn:hover { border-color: #e53e3e; color: #e53e3e; }
+.art-face-hint {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 6px;
+}
+.art-face-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.art-face-btn {
+  padding: 8px 4px;
+  border: 1px solid #d8d8d8;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #444;
+}
+.art-face-btn:hover { border-color: #3182ce; }
+.art-face-btn.active {
+  background: #3182ce;
+  color: #fff;
+  border-color: #3182ce;
+}
+.art-face-status {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #888;
+}
+
+/* ===== Fold + rotation controls ===== */
+.fold-row, .rot-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.fold-row input[type="range"], .rot-row input[type="range"] {
+  flex: 1;
+}
+.rot-row label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #666;
+}
+.fold-play-btn {
+  padding: 7px 12px;
+  border: 1px solid #3182ce;
+  background: #3182ce;
+  color: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.fold-play-btn:hover { background: #2563eb; }
+.fold-hint {
+  font-size: 12px;
+  color: #888;
 }
