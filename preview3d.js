@@ -50,22 +50,12 @@ Preview3D._rebuildIfCached = function() {
 
 Preview3D._applyFold = function() {
   var g = Preview3D.foldProgress;
-  if (!Preview3D._faces) return;
-  // Phased fold like a real carton:
-  //  - body panels rise to form the tube during [0, 0.6]
-  //  - flaps first RIDE with their parent panel (stay glued, no floating) during
-  //    [0, 0.6], then close during [0.6, 1].  smoothstep for natural easing.
-  Preview3D._faces.forEach(function(f) {
-    var midT = f.midT, t;
-    if (g <= midT) { t = midT > 0 ? g / midT : 0; t = Math.max(0, Math.min(1, t)); }
-    else { t = (g - midT) / (1 - midT); t = Math.max(0, Math.min(1, t)); }
-    t = t * t * (3 - 2 * t);
-    var from = g <= midT ? f.netPos : f.midPos;
-    var fromQ = g <= midT ? f.netQuat : f.midQuat;
-    var to = g <= midT ? f.midPos : f.boxPos;
-    var toQ = g <= midT ? f.midQuat : f.boxQuat;
-    f.mesh.position.lerpVectors(from, to, t);
-    f.mesh.quaternion.copy(fromQ).slerp(toQ, t);
+  if (!Preview3D._hinges) return;
+  // Animate each hinge ANGLE (0 = flat net, 1 = fully folded). Because faces are
+  // nested in the scene graph, rotating a hinge drags all descendants with it, so
+  // flaps ride their parent panel instead of floating — a real carton assembly.
+  Preview3D._hinges.forEach(function(h) {
+    h.group.setRotationFromAxisAngle(h.axis, h.sign * Math.PI / 2 * g);
   });
 };
 
@@ -282,7 +272,7 @@ Preview3D._buildThree = function(container, boxType, params, faceData) {
     var r = faceData[name];
     if (!r) return null;
     return { x1: r[0], y1: r[1], x2: r[2], y2: r[3],
-             w: r[2] - r[0], h: r[3] - r[1],
+             w: Math.abs(r[2] - r[0]), h: Math.abs(r[3] - r[1]),
              cx: (r[0] + r[2]) / 2, cy: (r[1] + r[3]) / 2 };
   }
 
@@ -315,10 +305,11 @@ Preview3D._buildThree = function(container, boxType, params, faceData) {
   viewGroup.add(boxGroup);
   Preview3D._flapPivots = [];
 
-  // ---- Compute net (flat) & box (folded) transforms for every face ----
-  // net  = every face laid flat on z=0 using its de.Face 2D coords (a real flat net / 展开图)
-  // box  = fold=1 poses (body panels form a cube, flaps closed at a 90deg hinge)
-  // fold = slerp/lerp between the two -> flat net smoothly folds into the closed box.
+  // ---- Crease-hierarchy hinge fold (packmage-style) ----
+  // Every face is parented to its parent face in the scene graph. A hinge Group
+  // sits ON the shared crease edge and rotates the child 0..90deg about that edge.
+  // Folding = animating the hinge ANGLE (never lerping absolute poses), so flaps
+  // ride with their parent and the carton assembles exactly like the real thing.
   var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   Object.keys(faceData).forEach(function(k) {
     var r = fr(k); if (!r) return;
@@ -327,143 +318,82 @@ Preview3D._buildThree = function(container, boxType, params, faceData) {
   });
   var bcx = (minX + maxX) / 2, bcy = (minY + maxY) / 2;
 
-  function netPosOf(r) { return new THREE.Vector3(r.cx - bcx, -(r.cy - bcy), 0); }
-  var NET_QUAT = new THREE.Quaternion(); // identity: panel lies in the XY plane, normal +Z
-
-  var bodyDefs = [
-    { key: 'M0', pos: [0, 0, W / 2], rot: [0, 0, 0], w: L, h: D },
-    { key: 'M5', pos: [0, 0, -W / 2], rot: [0, Math.PI, 0], w: L, h: D },
-    { key: 'M3', pos: [L / 2, 0, 0], rot: [0, Math.PI / 2, 0], w: W, h: D },
-    { key: 'M1', pos: [-L / 2, 0, 0], rot: [0, -Math.PI / 2, 0], w: W, h: D },
-    { key: 'M2', pos: [0, D / 2, 0], rot: [-Math.PI / 2, 0, 0], w: L, h: W },
-    { key: 'M4', pos: [0, -D / 2, 0], rot: [Math.PI / 2, 0, 0], w: L, h: W }
-  ];
-
-  // Body reference groups (used only for flap hinge math) + body box transforms
-  var bodyMap = {};
-  var bodyBox = {};
-  bodyDefs.forEach(function(def) {
-    var Mk = M[def.key]; if (!Mk) return;
-    var g = new THREE.Group();
-    g.position.set(def.pos[0], def.pos[1], def.pos[2]);
-    g.rotation.set(def.rot[0], def.rot[1], def.rot[2]);
-    boxGroup.add(g); // empty reference group; removed after flap math
-    bodyMap[def.key] = { group: g, rect: Mk };
-    bodyBox[def.key] = {
-      pos: new THREE.Vector3(def.pos[0], def.pos[1], def.pos[2]),
-      quat: new THREE.Quaternion().setFromEuler(new THREE.Euler(def.rot[0], def.rot[1], def.rot[2]))
-    };
-  });
-  scene.updateMatrixWorld(true);
-
-  // Flap box transforms (fold=1): generic shared-edge hinge at 90deg
-  var flapBox = {};
-  Object.keys(faceData).forEach(function(key) {
-    if (M[key]) return; // skip the six body panels
-    var F = fr(key); if (!F) return;
-    var parentKey = null, shared = null, bestLen = -1;
-    for (var bi = 0; bi < bodyDefs.length; bi++) {
-      var bk = bodyDefs[bi].key, Br = M[bk]; if (!Br) continue;
-      var fe = rectEdges(F), be = rectEdges(Br);
-      for (var i = 0; i < 4; i++) {
-        for (var j = 0; j < 4; j++) {
-          var ov = edgesOverlap(fe[i], be[j]);
-          if (ov && ov.len > bestLen) { bestLen = ov.len; parentKey = bk; shared = ov; }
-        }
-      }
-    }
-    if (!parentKey || !shared) return;
-    var B = bodyMap[parentKey];
-    function toWorld(px, py) {
-      var lu = px - B.rect.cx, lv = B.rect.cy - py;
-      return B.group.localToWorld(new THREE.Vector3(lu, lv, 0));
-    }
-    function toWorldDir(dx, dy) {
-      var p0 = toWorld(shared.cx, shared.cy);
-      var p1 = toWorld(shared.cx + dx, shared.cy - dy);
-      return p1.sub(p0).normalize();
-    }
-    var Emid = toWorld(shared.cx, shared.cy);
-    var Edir = toWorldDir(shared.dir.x, shared.dir.y);
-    var n = B.group.localToWorld(new THREE.Vector3(0, 0, 1))
-            .sub(B.group.localToWorld(new THREE.Vector3(0, 0, 0))).normalize();
-    var Yaxis = new THREE.Vector3().crossVectors(n, Edir).normalize();
-    var Fc = toWorld(F.cx, F.cy);
-    var offset = Fc.clone().sub(Emid).dot(Yaxis);
-    var base = new THREE.Matrix4().makeBasis(Edir, Yaxis, n);
-    var a = -Math.PI / 2, sign = (offset >= 0 ? 1 : -1);
-    var pivotQuat = new THREE.Quaternion().setFromRotationMatrix(base);
-    pivotQuat.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), sign * a));
-    var meshLocal = new THREE.Vector3(0, offset, 0);
-    var wp = Emid.clone().add(meshLocal.clone().applyQuaternion(pivotQuat));
-    flapBox[key] = { pos: wp, quat: pivotQuat.clone() };
-  });
-
-  // Build one mesh per face, parented directly to boxGroup; start at the net pose.
-  // Body panels (M0..M5) form the carton tube during [0,0.6]; flaps first ride
-  // with their parent panel (glued, no floating) then close during [0.6,1].
-  var shift = new THREE.Vector3(0, 0, 0); // keep the folded box centered (verified framing)
-  // Parent tree (BFS from M0) so flaps can follow their parent panel's motion.
-  var parentOf = {}, _vis = { M0: true }, _q = ['M0'];
-  while (_q.length) {
-    var _cur = _q.shift();
+  // BFS parent tree + hinge edges (shared crease with length > 8) from largest face.
+  var areaOf = {};
+  Object.keys(faceData).forEach(function(k) { var r = fr(k); areaOf[k] = Math.abs((r.x2 - r.x1) * (r.y2 - r.y1)); });
+  var root = Object.keys(faceData).slice().sort(function(a, b) { return areaOf[b] - areaOf[a]; })[0];
+  var parentOf = {}, hingeOf = {}, vis = {}; vis[root] = true; var qq = [root];
+  while (qq.length) {
+    var cur = qq.shift();
     Object.keys(faceData).forEach(function(k) {
-      if (_vis[k] || !fr(k)) return;
-      var fe = rectEdges(fr(_cur)), fk = rectEdges(fr(k)), ov = null, bestLen = -1;
-      for (var ei = 0; ei < 4; ei++) for (var ej = 0; ej < 4; ej++) {
-        var o = edgesOverlap(fe[ei], fk[ej]);
+      if (vis[k] || !fr(k)) return;
+      var fe = rectEdges(fr(cur)), fk = rectEdges(fr(k)), ov = null, bestLen = -1;
+      for (var i = 0; i < 4; i++) for (var j = 0; j < 4; j++) {
+        var o = edgesOverlap(fe[i], fk[j]);
         if (o && o.len > bestLen) { bestLen = o.len; ov = o; }
       }
-      if (ov && ov.len > 8) { parentOf[k] = _cur; _vis[k] = true; _q.push(k); }
+      if (ov && ov.len > 8) { parentOf[k] = cur; hingeOf[k] = ov; vis[k] = true; qq.push(k); }
     });
   }
+
+  // Build scene-graph groups in BFS order. net->world flips Y so the flat net reads upright.
+  var faceGroup = {};
+  Preview3D._hinges = [];
+  var rc = fr(root);
+  faceGroup[root] = new THREE.Group();
+  faceGroup[root].position.set(rc.cx - bcx, -(rc.cy - bcy), 0);
+  boxGroup.add(faceGroup[root]);
+
+  var order = [root];
+  (function bfsOrder() {
+    var q = [root];
+    while (q.length) {
+      var c = q.shift();
+      Object.keys(parentOf).forEach(function(k) { if (parentOf[k] === c) { order.push(k); q.push(k); } });
+    }
+  })();
+
+  order.forEach(function(key) {
+    if (key === root) return;
+    var pk = parentOf[key];
+    var cur = fr(key), pr = fr(pk), ov = hingeOf[key];
+    // hinge + child offsets expressed in the PARENT's local frame (Y flipped for world)
+    var hLocal = new THREE.Vector3(ov.cx - pr.cx, -(ov.cy - pr.cy), 0);
+    var cLocal = new THREE.Vector3(cur.cx - ov.cx, -(cur.cy - ov.cy), 0);
+    var axis = new THREE.Vector3(ov.dir.x, -ov.dir.y, 0);
+    if (axis.lengthSq() < 1e-9) axis.set(1, 0, 0);
+    axis.normalize();
+    var hingeG = new THREE.Group();
+    hingeG.position.copy(hLocal);
+    faceGroup[pk].add(hingeG);
+    var fg = new THREE.Group();
+    fg.position.copy(cLocal);
+    hingeG.add(fg);
+    faceGroup[key] = fg;
+    // Probe sign: with ancestors fully folded, pick the hinge angle that lifts the
+    // child highest (global +z) -> walls rise, lid closes outward, no inversion.
+    Preview3D._hinges.forEach(function(h) { h.group.setRotationFromAxisAngle(h.axis, h.sign * Math.PI / 2); });
+    scene.updateMatrixWorld(true);
+    var wp = new THREE.Vector3();
+    hingeG.setRotationFromAxisAngle(axis, Math.PI / 2); scene.updateMatrixWorld(true);
+    var zP = fg.getWorldPosition(wp.clone()).z;
+    hingeG.setRotationFromAxisAngle(axis, -Math.PI / 2); scene.updateMatrixWorld(true);
+    var zM = fg.getWorldPosition(wp.clone()).z;
+    var sign = zP >= zM ? 1 : -1;
+    Preview3D._hinges.push({ group: hingeG, axis: axis, sign: sign });
+    hingeG.setRotationFromAxisAngle(axis, 0);
+  });
+
+  // One mesh per face, parented to its hinge chain.
   Preview3D._faces = [];
   Object.keys(faceData).forEach(function(key) {
-    var F = fr(key); if (!F) return;
-    var netPos = netPosOf(F);
-    var boxT = M[key] ? bodyBox[key] : flapBox[key];
-    if (!boxT) return; // orphan / nested face -> skip gracefully
+    var F = fr(key); if (!F || !faceGroup[key]) return;
     var geo = new THREE.PlaneGeometry(F.w, F.h);
     var mat = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
     var mesh = new THREE.Mesh(geo, mat);
-    mesh.position.copy(netPos);
-    mesh.quaternion.copy(NET_QUAT);
-    boxGroup.add(mesh);
+    faceGroup[key].add(mesh);
     assignTexture(mat, key, F, svgInfo);
-
-    var isBody = !!M[key];
-    var midPos, midQuat;
-    if (isBody) {
-      midPos = boxT.pos.clone(); midQuat = boxT.quat.clone();
-    } else {
-      // Flap: glue flat onto its parent panel's folded face (so it rides along).
-      var pk = parentOf[key];
-      var pBox = pk ? (M[pk] ? bodyBox[pk] : flapBox[pk]) : null;
-      if (pBox) {
-        var pNet = netPosOf(fr(pk));
-        var rel = netPos.clone().sub(pNet);
-        midPos = pBox.pos.clone().add(shift).add(rel.clone().applyQuaternion(pBox.quat));
-        midQuat = pBox.quat.clone();
-      } else {
-        midPos = boxT.pos.clone(); midQuat = boxT.quat.clone();
-      }
-    }
-    Preview3D._faces.push({
-      mesh: mesh,
-      netPos: netPos,
-      netQuat: NET_QUAT.clone(),
-      midPos: midPos,
-      midQuat: midQuat,
-      boxPos: boxT.pos.clone().add(shift),
-      boxQuat: boxT.quat.clone(),
-      midT: 0.6
-    });
-  });
-
-  // Drop empty reference groups
-  bodyDefs.forEach(function(def) {
-    var grp = bodyMap[def.key] && bodyMap[def.key].group;
-    if (grp && grp.parent) grp.parent.remove(grp);
+    Preview3D._faces.push({ key: key });
   });
 
   // Apply current fold state (foldProgress = 0 -> flat net / 展开图)

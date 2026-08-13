@@ -451,6 +451,7 @@
             (PackmageBoxTypes.hasGeometry(b.id) ? '<span class="lib-box-badge">Ready</span>' : '');
           boxDiv.addEventListener('click', function() {
             self.selectPackmageBox(b.id);
+            if (self.closeDrawer) self.closeDrawer();
           });
           boxDiv.addEventListener('mouseenter', function(e) {
             self.showBoxPreview(b.id, shortTag, e.currentTarget);
@@ -668,14 +669,33 @@
       document.querySelectorAll('.panel-tab').forEach(function(tab) {
         tab.addEventListener('click', function() {
           self.switchTab(this.dataset.tab);
+          if (self.closeDrawer) self.closeDrawer();
         });
       });
+
+      // Mobile slide-in drawer (left panel becomes a drawer on narrow screens)
+      self.closeDrawer = function() {
+        var pp = document.getElementById('paramPanel');
+        var bd = document.getElementById('panelBackdrop');
+        if (pp) pp.classList.remove('open');
+        if (bd) bd.classList.remove('show');
+      };
+      var btnMenu = document.getElementById('btnMenu');
+      var panelBackdrop = document.getElementById('panelBackdrop');
+      if (btnMenu) btnMenu.addEventListener('click', function() {
+        var pp = document.getElementById('paramPanel');
+        if (!pp) return;
+        var isOpen = pp.classList.toggle('open');
+        if (panelBackdrop) panelBackdrop.classList.toggle('show', isOpen);
+      });
+      if (panelBackdrop) panelBackdrop.addEventListener('click', function() { self.closeDrawer(); });
 
       // View switch (2D / 3D)
       document.getElementById('btnView2D').addEventListener('click', function() { self.switchView('2d'); });
       document.getElementById('btnView3D').addEventListener('click', function() {
         self.switchTab('threed');
         self.switchView('3d');
+        if (self.closeDrawer) self.closeDrawer();
       });
 
       // Artwork (贴图): upload + face select + clear
