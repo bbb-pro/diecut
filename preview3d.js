@@ -122,6 +122,11 @@ Preview3D._fetchAndRender = function(container, boxType, params) {
   var xhr = new XMLHttpRequest();
   xhr.open('POST', DiecutConfig.apiBase, true);
   xhr.setRequestHeader('Content-Type', 'application/json');
+  // Don't leave the user stuck on "loading" forever if the proxy is down/slow:
+  // on timeout or network error, drop to the simple (no-WebGL) renderer instead.
+  xhr.timeout = 15000;
+  xhr.ontimeout = function() { Preview3D._renderSimple(container, boxType, params); };
+  xhr.onerror = function() { Preview3D._renderSimple(container, boxType, params); };
   xhr.onreadystatechange = function() {
     if (xhr.readyState !== 4) return;
     try {
@@ -265,6 +270,11 @@ function edgesOverlap(a, b) {
 Preview3D._buildThree = function(container, boxType, params, faceData) {
   // Cache for quick texture updates
   Preview3D._cache = { boxType: boxType, faceData: faceData, params: params, container: container };
+
+  // Always start from a clean container. When this is reached via _fetchAndRender,
+  // the container still holds the "正在加载 3D 数据…" placeholder — leaving it in
+  // place makes the loading text stick above the canvas (looked like "stuck loading").
+  container.innerHTML = '';
 
   var svgInfo = Preview3D._generateSVGDataURI(boxType);
 
