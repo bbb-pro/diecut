@@ -5,7 +5,7 @@
  * Supports dynamic parameter changes via API proxy.
  *
  * Data format (fe array):
- *   [0, style, x1, y1, x2, y2]       — Line segment (style: 1=cut, 0=crease)
+ *   [0, style, x1, y1, x2, y2]       — Line segment (style: 0=cut/切线, 1=crease/压痕)
  *   [1, style, cx, cy, r, sa, ea]    — Arc (center, radius, start/end angle in degrees)
  *   [2, style, x1, y1, x2, y2, ...]  — Polyline
  */
@@ -199,7 +199,7 @@ function convertPackmageGeometry(fe, ox, oy) {
         [e[2] + absOx, e[3] + absOy],
         [e[4] + absOx, e[5] + absOy]
       ];
-      if (style === 1) cuts.push(line);
+      if (style === 0) cuts.push(line);
       else creases.push(line);
     } else if (type === 1) {
       var cx = e[2] + absOx;
@@ -225,7 +225,7 @@ function convertPackmageGeometry(fe, ox, oy) {
         var angle = angleDeg * Math.PI / 180;
         points.push([cx + r * Math.cos(angle), cy - r * Math.sin(angle)]);
       }
-      if (style === 1) cuts.push(points);
+      if (style === 0) cuts.push(points);
       else creases.push(points);
     } else if (type === 2) {
       var pts = [];
@@ -233,7 +233,7 @@ function convertPackmageGeometry(fe, ox, oy) {
         pts.push([e[j] + absOx, e[j + 1] + absOy]);
       }
       if (pts.length >= 2) {
-        if (style === 1) cuts.push(pts);
+        if (style === 0) cuts.push(pts);
         else creases.push(pts);
       }
     }
