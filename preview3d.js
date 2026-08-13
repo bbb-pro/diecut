@@ -19,8 +19,9 @@ var Preview3D = {};
 
 /* ===== Shared state ===== */
 Preview3D.faceTextures = {};   // faceKey -> dataURL (user artwork)
-Preview3D.foldProgress = 1;    // 0 = flat net, 1 = fully folded/closed
-Preview3D._flapPivots = [];    // [{pivot, base, sign, key}]
+Preview3D.foldProgress = 0;    // 0 = flat net (展开图), 1 = fully folded/closed
+Preview3D._flapPivots = [];    // legacy, kept for compat
+Preview3D._faces = [];         // [{mesh, netPos, netQuat, boxPos, boxQuat}]
 Preview3D._cache = null;       // {boxType, faceData, params, container}
 
 /* ===== Public: set/clear per-face artwork ===== */
@@ -48,10 +49,11 @@ Preview3D._rebuildIfCached = function() {
 };
 
 Preview3D._applyFold = function() {
-  var a = -Math.PI / 2 * Preview3D.foldProgress;
-  Preview3D._flapPivots.forEach(function(fp) {
-    fp.pivot.quaternion.setFromRotationMatrix(fp.base);
-    fp.pivot.rotateX(fp.sign * a);
+  var p = Preview3D.foldProgress;
+  if (!Preview3D._faces) return;
+  Preview3D._faces.forEach(function(f) {
+    f.mesh.position.lerpVectors(f.netPos, f.boxPos, p);
+    f.mesh.quaternion.copy(f.netQuat).slerp(f.boxQuat, p);
   });
 };
 
@@ -283,11 +285,27 @@ Preview3D._buildThree = function(container, boxType, params, faceData) {
   var dl1 = new THREE.DirectionalLight(0xffffff, 0.4); dl1.position.set(L, D, W); scene.add(dl1);
   var dl2 = new THREE.DirectionalLight(0xffffff, 0.18); dl2.position.set(-L, -D / 2, -W); scene.add(dl2);
 
-  var boxGroup = new THREE.Group();
-  scene.add(boxGroup);
+  var viewGroup = new THREE.Group();   // holds view (rotateX/Y) only
+  scene.add(viewGroup);
+  var boxGroup = new THREE.Group();    // holds fold state (net <-> box)
+  viewGroup.add(boxGroup);
   Preview3D._flapPivots = [];
 
-  // ---- Body panels (M0..M5) ----
+  // ---- Compute net (flat) & box (folded) transforms for every face ----
+  // net  = every face laid flat on z=0 using its de.Face 2D coords (a real flat net / 展开图)
+  // box  = fold=1 poses (body panels form a cube, flaps closed at a 90deg hinge)
+  // fold = slerp/lerp between the two -> flat net smoothly folds into the closed box.
+  var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  Object.keys(faceData).forEach(function(k) {
+    var r = fr(k); if (!r) return;
+    minX = Math.min(minX, r.x1); maxX = Math.max(maxX, r.x2);
+    minY = Math.min(minY, r.y1); maxY = Math.max(maxY, r.y2);
+  });
+  var bcx = (minX + maxX) / 2, bcy = (minY + maxY) / 2;
+
+  function netPosOf(r) { return new THREE.Vector3(r.cx - bcx, -(r.cy - bcy), 0); }
+  var NET_QUAT = new THREE.Quaternion(); // identity: panel lies in the XY plane, normal +Z
+
   var bodyDefs = [
     { key: 'M0', pos: [0, 0, W / 2], rot: [0, 0, 0], w: L, h: D },
     { key: 'M5', pos: [0, 0, -W / 2], rot: [0, Math.PI, 0], w: L, h: D },
@@ -296,35 +314,32 @@ Preview3D._buildThree = function(container, boxType, params, faceData) {
     { key: 'M2', pos: [0, D / 2, 0], rot: [-Math.PI / 2, 0, 0], w: L, h: W },
     { key: 'M4', pos: [0, -D / 2, 0], rot: [Math.PI / 2, 0, 0], w: L, h: W }
   ];
+
+  // Body reference groups (used only for flap hinge math) + body box transforms
   var bodyMap = {};
+  var bodyBox = {};
   bodyDefs.forEach(function(def) {
-    var Mk = M[def.key];
-    if (!Mk) return;
+    var Mk = M[def.key]; if (!Mk) return;
     var g = new THREE.Group();
     g.position.set(def.pos[0], def.pos[1], def.pos[2]);
     g.rotation.set(def.rot[0], def.rot[1], def.rot[2]);
-    boxGroup.add(g);
+    boxGroup.add(g); // empty reference group; removed after flap math
     bodyMap[def.key] = { group: g, rect: Mk };
-
-    var geo = new THREE.PlaneGeometry(def.w, def.h);
-    var mat = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
-    var mesh = new THREE.Mesh(geo, mat);
-    g.add(mesh);
-    assignTexture(mat, def.key, Mk, svgInfo);
+    bodyBox[def.key] = {
+      pos: new THREE.Vector3(def.pos[0], def.pos[1], def.pos[2]),
+      quat: new THREE.Quaternion().setFromEuler(new THREE.Euler(def.rot[0], def.rot[1], def.rot[2]))
+    };
   });
-
   scene.updateMatrixWorld(true);
 
-  // ---- Flaps (every non-body face), attached GENERICALLY by shared edge ----
+  // Flap box transforms (fold=1): generic shared-edge hinge at 90deg
+  var flapBox = {};
   Object.keys(faceData).forEach(function(key) {
-    if (key === 'M0' || key === 'M1' || key === 'M2' || key === 'M3' || key === 'M4' || key === 'M5') return;
-    var F = fr(key);
-    if (!F) return;
+    if (M[key]) return; // skip the six body panels
+    var F = fr(key); if (!F) return;
     var parentKey = null, shared = null, bestLen = -1;
     for (var bi = 0; bi < bodyDefs.length; bi++) {
-      var bk = bodyDefs[bi].key;
-      var Br = M[bk];
-      if (!Br) continue;
+      var bk = bodyDefs[bi].key, Br = M[bk]; if (!Br) continue;
       var fe = rectEdges(F), be = rectEdges(Br);
       for (var i = 0; i < 4; i++) {
         for (var j = 0; j < 4; j++) {
@@ -334,9 +349,7 @@ Preview3D._buildThree = function(container, boxType, params, faceData) {
       }
     }
     if (!parentKey || !shared) return;
-
     var B = bodyMap[parentKey];
-    // net point -> body-group local (localU = x-cx, localV = cy-y), then world
     function toWorld(px, py) {
       var lu = px - B.rect.cx, lv = B.rect.cy - py;
       return B.group.localToWorld(new THREE.Vector3(lu, lv, 0));
@@ -351,41 +364,57 @@ Preview3D._buildThree = function(container, boxType, params, faceData) {
     var n = B.group.localToWorld(new THREE.Vector3(0, 0, 1))
             .sub(B.group.localToWorld(new THREE.Vector3(0, 0, 0))).normalize();
     var Yaxis = new THREE.Vector3().crossVectors(n, Edir).normalize();
-
     var Fc = toWorld(F.cx, F.cy);
     var offset = Fc.clone().sub(Emid).dot(Yaxis);
-
-    var pivot = new THREE.Object3D();
-    var m = new THREE.Matrix4().makeBasis(Edir, Yaxis, n);
-    pivot.quaternion.setFromRotationMatrix(m);
-    pivot.position.copy(Emid);
-    boxGroup.add(pivot);
-
-    var geo = new THREE.PlaneGeometry(F.w, F.h);
-    var mat = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.96 });
-    var mesh = new THREE.Mesh(geo, mat);
-    mesh.position.set(0, offset, 0);
-    pivot.add(mesh);
-    assignTexture(mat, key, F, svgInfo);
-
-    Preview3D._flapPivots.push({ pivot: pivot, base: m.clone(), sign: (offset >= 0 ? 1 : -1), key: key });
+    var base = new THREE.Matrix4().makeBasis(Edir, Yaxis, n);
+    var a = -Math.PI / 2, sign = (offset >= 0 ? 1 : -1);
+    var pivotQuat = new THREE.Quaternion().setFromRotationMatrix(base);
+    pivotQuat.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), sign * a));
+    var meshLocal = new THREE.Vector3(0, offset, 0);
+    var wp = Emid.clone().add(meshLocal.clone().applyQuaternion(pivotQuat));
+    flapBox[key] = { pos: wp, quat: pivotQuat.clone() };
   });
 
-  // Apply current fold state
-  Preview3D._applyFold();
+  // Build one mesh per face, parented directly to boxGroup; start at the net pose
+  Preview3D._faces = [];
+  Object.keys(faceData).forEach(function(key) {
+    var F = fr(key); if (!F) return;
+    var netPos = netPosOf(F);
+    var boxT = M[key] ? bodyBox[key] : flapBox[key];
+    if (!boxT) return; // orphan / nested face -> skip gracefully
+    var geo = new THREE.PlaneGeometry(F.w, F.h);
+    var mat = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+    var mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(netPos);
+    mesh.quaternion.copy(NET_QUAT);
+    boxGroup.add(mesh);
+    assignTexture(mat, key, F, svgInfo);
+    Preview3D._faces.push({
+      mesh: mesh,
+      netPos: netPos,
+      netQuat: NET_QUAT.clone(),
+      boxPos: boxT.pos.clone(),
+      boxQuat: boxT.quat.clone()
+    });
+  });
 
-  // ---- Edge wireframe for definition ----
-  var edgeGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(L, D, W));
-  var edgeMat = new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.25 });
-  boxGroup.add(new THREE.LineSegments(edgeGeo, edgeMat));
+  // Drop empty reference groups
+  bodyDefs.forEach(function(def) {
+    var grp = bodyMap[def.key] && bodyMap[def.key].group;
+    if (grp && grp.parent) grp.parent.remove(grp);
+  });
+
+  // Apply current fold state (foldProgress = 0 -> flat net / 展开图)
+  Preview3D._applyFold();
 
   // ---- View controls ----
   var rotY = -0.5, rotX = -0.35;
-  var camDist = Math.max(L, W, D) * 2.6;
+  var netW = maxX - minX, netH = maxY - minY;
+  var camDist = Math.max(netW, netH, L, W, D) * 1.35;
   var zoom = 1.0;
   function updateView() {
-    boxGroup.rotation.x = rotX;
-    boxGroup.rotation.y = rotY;
+    viewGroup.rotation.x = rotX;
+    viewGroup.rotation.y = rotY;
     camera.position.set(0, 0, camDist / zoom);
     camera.lookAt(0, 0, 0);
   }

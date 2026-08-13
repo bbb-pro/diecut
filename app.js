@@ -335,6 +335,8 @@
         if (b2) b2.classList.remove('active');
         if (b3) b3.classList.add('active');
         this.render3D();
+        var fs = document.getElementById('foldSlider');
+        if (fs) fs.value = Math.round(Preview3D.foldProgress * 100);
       } else {
         if (svg) svg.style.display = '';
         if (pv) pv.style.display = 'none';
