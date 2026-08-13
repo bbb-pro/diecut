@@ -137,15 +137,6 @@
       </div>
 
       <div class="panel-section">
-        <div class="panel-section-title">3D 折叠</div>
-        <div class="fold-row">
-          <input type="range" id="foldSlider" min="0" max="100" value="0" step="1">
-          <button id="btnFoldPlay" class="fold-play-btn">播放动画</button>
-        </div>
-        <div class="fold-hint">0% = 平铺刀模 &middot; 100% = 立体盒</div>
-      </div>
-
-      <div class="panel-section">
         <div class="panel-section-title">视角</div>
         <div class="rot-row">
           <label>水平 <input type="range" id="rotateY" min="-180" max="180" value="-30"></label>
@@ -170,6 +161,23 @@
       <svg id="diecutSvg" xmlns="http://www.w3.org/2000/svg"></svg>
     </div>
     <div id="preview3d" style="display:none;"></div>
+
+    <div id="previewToolbar" class="preview-toolbar" style="display:none;">
+      <div class="pt-group pt-fold-group">
+        <span class="pt-label">展开</span>
+        <input type="range" id="foldSlider" min="0" max="100" value="0" step="1" class="pt-fold">
+        <span class="pt-label">折叠</span>
+        <button id="btnFoldPlay" class="pt-btn pt-play" title="播放折叠动画">&#9654; 播放</button>
+      </div>
+      <div class="pt-sep"></div>
+      <div class="pt-group">
+        <button id="btnViewReset" class="pt-btn" title="重置视角">&#8635; 视角</button>
+        <button id="btnZoomOut3" class="pt-btn" title="缩小">&#8722;</button>
+        <button id="btnZoomIn3" class="pt-btn" title="放大">&#43;</button>
+      </div>
+      <div class="pt-hint">拖拽旋转 &middot; 滚轮缩放 &middot; 拖动滑块看折叠</div>
+    </div>
+
     <div id="canvasOverlay">
       <div class="overlay-info" id="overlayInfo"></div>
       <div class="overlay-hint">滚轮缩放 &#183; 拖拽平移 &#183; 双击适应</div>

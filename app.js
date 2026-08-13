@@ -327,11 +327,13 @@
       this.state.viewMode = mode;
       var svg = document.getElementById('canvasContainer');
       var pv = document.getElementById('preview3d');
+      var tb = document.getElementById('previewToolbar');
       var b2 = document.getElementById('btnView2D');
       var b3 = document.getElementById('btnView3D');
       if (mode === '3d') {
         if (svg) svg.style.display = 'none';
         if (pv) pv.style.display = 'block';
+        if (tb) tb.style.display = 'flex';
         if (b2) b2.classList.remove('active');
         if (b3) b3.classList.add('active');
         this.render3D();
@@ -340,6 +342,7 @@
       } else {
         if (svg) svg.style.display = '';
         if (pv) pv.style.display = 'none';
+        if (tb) tb.style.display = 'none';
         if (b3) b3.classList.remove('active');
         if (b2) b2.classList.add('active');
         if (pv && typeof Preview3D !== 'undefined' && Preview3D._cleanup) Preview3D._cleanup(pv);
@@ -670,7 +673,10 @@
 
       // View switch (2D / 3D)
       document.getElementById('btnView2D').addEventListener('click', function() { self.switchView('2d'); });
-      document.getElementById('btnView3D').addEventListener('click', function() { self.switchView('3d'); });
+      document.getElementById('btnView3D').addEventListener('click', function() {
+        self.switchTab('threed');
+        self.switchView('3d');
+      });
 
       // Artwork (贴图): upload + face select + clear
       var artUpload = document.getElementById('artUpload');
@@ -720,6 +726,19 @@
           if (k < 1) requestAnimationFrame(step);
         }
         requestAnimationFrame(step);
+      });
+
+      var btnViewReset = document.getElementById('btnViewReset');
+      if (btnViewReset) btnViewReset.addEventListener('click', function() {
+        if (typeof Preview3D !== 'undefined' && Preview3D._viewReset) Preview3D._viewReset();
+      });
+      var btnZoomIn3 = document.getElementById('btnZoomIn3');
+      if (btnZoomIn3) btnZoomIn3.addEventListener('click', function() {
+        if (typeof Preview3D !== 'undefined' && Preview3D._viewZoom) Preview3D._viewZoom(1 / 1.15);
+      });
+      var btnZoomOut3 = document.getElementById('btnZoomOut3');
+      if (btnZoomOut3) btnZoomOut3.addEventListener('click', function() {
+        if (typeof Preview3D !== 'undefined' && Preview3D._viewZoom) Preview3D._viewZoom(1.15);
       });
 
       // Search

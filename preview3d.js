@@ -49,11 +49,23 @@ Preview3D._rebuildIfCached = function() {
 };
 
 Preview3D._applyFold = function() {
-  var p = Preview3D.foldProgress;
+  var g = Preview3D.foldProgress;
   if (!Preview3D._faces) return;
+  // Phased fold like a real carton:
+  //  - body panels rise to form the tube during [0, 0.6]
+  //  - flaps first RIDE with their parent panel (stay glued, no floating) during
+  //    [0, 0.6], then close during [0.6, 1].  smoothstep for natural easing.
   Preview3D._faces.forEach(function(f) {
-    f.mesh.position.lerpVectors(f.netPos, f.boxPos, p);
-    f.mesh.quaternion.copy(f.netQuat).slerp(f.boxQuat, p);
+    var midT = f.midT, t;
+    if (g <= midT) { t = midT > 0 ? g / midT : 0; t = Math.max(0, Math.min(1, t)); }
+    else { t = (g - midT) / (1 - midT); t = Math.max(0, Math.min(1, t)); }
+    t = t * t * (3 - 2 * t);
+    var from = g <= midT ? f.netPos : f.midPos;
+    var fromQ = g <= midT ? f.netQuat : f.midQuat;
+    var to = g <= midT ? f.midPos : f.boxPos;
+    var toQ = g <= midT ? f.midQuat : f.boxQuat;
+    f.mesh.position.lerpVectors(from, to, t);
+    f.mesh.quaternion.copy(fromQ).slerp(toQ, t);
   });
 };
 
@@ -88,6 +100,8 @@ function _parse(face) {
 }
 
 Preview3D._cleanup = function(container) {
+  Preview3D._viewReset = null;
+  Preview3D._viewZoom = null;
   if (container._animId) { cancelAnimationFrame(container._animId); container._animId = null; }
   if (container._threeRenderer) { container._threeRenderer.dispose(); container._threeRenderer = null; }
   if (container._mouseMoveHandler) {
@@ -375,7 +389,24 @@ Preview3D._buildThree = function(container, boxType, params, faceData) {
     flapBox[key] = { pos: wp, quat: pivotQuat.clone() };
   });
 
-  // Build one mesh per face, parented directly to boxGroup; start at the net pose
+  // Build one mesh per face, parented directly to boxGroup; start at the net pose.
+  // Body panels (M0..M5) form the carton tube during [0,0.6]; flaps first ride
+  // with their parent panel (glued, no floating) then close during [0.6,1].
+  var shift = new THREE.Vector3(0, 0, 0); // keep the folded box centered (verified framing)
+  // Parent tree (BFS from M0) so flaps can follow their parent panel's motion.
+  var parentOf = {}, _vis = { M0: true }, _q = ['M0'];
+  while (_q.length) {
+    var _cur = _q.shift();
+    Object.keys(faceData).forEach(function(k) {
+      if (_vis[k] || !fr(k)) return;
+      var fe = rectEdges(fr(_cur)), fk = rectEdges(fr(k)), ov = null, bestLen = -1;
+      for (var ei = 0; ei < 4; ei++) for (var ej = 0; ej < 4; ej++) {
+        var o = edgesOverlap(fe[ei], fk[ej]);
+        if (o && o.len > bestLen) { bestLen = o.len; ov = o; }
+      }
+      if (ov && ov.len > 8) { parentOf[k] = _cur; _vis[k] = true; _q.push(k); }
+    });
+  }
   Preview3D._faces = [];
   Object.keys(faceData).forEach(function(key) {
     var F = fr(key); if (!F) return;
@@ -389,12 +420,33 @@ Preview3D._buildThree = function(container, boxType, params, faceData) {
     mesh.quaternion.copy(NET_QUAT);
     boxGroup.add(mesh);
     assignTexture(mat, key, F, svgInfo);
+
+    var isBody = !!M[key];
+    var midPos, midQuat;
+    if (isBody) {
+      midPos = boxT.pos.clone(); midQuat = boxT.quat.clone();
+    } else {
+      // Flap: glue flat onto its parent panel's folded face (so it rides along).
+      var pk = parentOf[key];
+      var pBox = pk ? (M[pk] ? bodyBox[pk] : flapBox[pk]) : null;
+      if (pBox) {
+        var pNet = netPosOf(fr(pk));
+        var rel = netPos.clone().sub(pNet);
+        midPos = pBox.pos.clone().add(shift).add(rel.clone().applyQuaternion(pBox.quat));
+        midQuat = pBox.quat.clone();
+      } else {
+        midPos = boxT.pos.clone(); midQuat = boxT.quat.clone();
+      }
+    }
     Preview3D._faces.push({
       mesh: mesh,
       netPos: netPos,
       netQuat: NET_QUAT.clone(),
-      boxPos: boxT.pos.clone(),
-      boxQuat: boxT.quat.clone()
+      midPos: midPos,
+      midQuat: midQuat,
+      boxPos: boxT.pos.clone().add(shift),
+      boxQuat: boxT.quat.clone(),
+      midT: 0.6
     });
   });
 
@@ -412,6 +464,7 @@ Preview3D._buildThree = function(container, boxType, params, faceData) {
   var netW = maxX - minX, netH = maxY - minY;
   var camDist = Math.max(netW, netH, L, W, D) * 1.35;
   var zoom = 1.0;
+  var zoom = 1.0;
   function updateView() {
     viewGroup.rotation.x = rotX;
     viewGroup.rotation.y = rotY;
@@ -419,6 +472,17 @@ Preview3D._buildThree = function(container, boxType, params, faceData) {
     camera.lookAt(0, 0, 0);
   }
   updateView();
+
+  // Expose view controls for the floating toolbar (reset view + zoom buttons)
+  Preview3D._viewReset = function() {
+    rotX = -0.35; rotY = -0.5; zoom = 1.0; updateView();
+    var ryS = document.getElementById('rotateY'), rxS = document.getElementById('rotateX');
+    if (ryS) ryS.value = (rotY * 180 / Math.PI).toFixed(0);
+    if (rxS) rxS.value = (rotX * 180 / Math.PI).toFixed(0);
+  };
+  Preview3D._viewZoom = function(f) {
+    zoom = Math.max(0.3, Math.min(5.0, zoom * f)); updateView();
+  };
 
   var canvas = renderer.domElement;
   canvas.style.cursor = 'grab';

@@ -750,3 +750,64 @@ body {
   font-size: 12px;
   color: #888;
 }
+
+/* ===== 3D 悬浮控制条（参考 packmage 3D 视图） ===== */
+.preview-toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 6px 22px rgba(15, 23, 42, 0.14);
+  z-index: 20;
+  backdrop-filter: blur(4px);
+  max-width: calc(100% - 32px);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.pt-group { display: flex; align-items: center; gap: 10px; }
+.pt-fold-group { gap: 8px; }
+.pt-sep { width: 1px; height: 26px; background: #e2e8f0; }
+.pt-label { font-size: 12px; color: #64748b; white-space: nowrap; }
+.pt-fold {
+  width: 200px;
+  max-width: 38vw;
+  accent-color: #3182ce;
+  cursor: pointer;
+}
+.pt-btn {
+  padding: 7px 12px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s;
+}
+.pt-btn:hover { background: #f1f5f9; border-color: #94a3b8; }
+.pt-btn:active { background: #e2e8f0; }
+.pt-play {
+  border-color: #3182ce;
+  background: #3182ce;
+  color: #fff;
+  font-weight: 600;
+}
+.pt-play:hover { background: #2563eb; border-color: #2563eb; }
+.pt-hint {
+  flex-basis: 100%;
+  text-align: center;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+/* 3D 标签页：贴图卡片更紧凑 */
+#tabThree .panel-section { margin-bottom: 14px; }
