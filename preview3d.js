@@ -51,11 +51,24 @@ Preview3D._rebuildIfCached = function() {
 Preview3D._applyFold = function() {
   var g = Preview3D.foldProgress;
   if (!Preview3D._hinges) return;
-  // Animate each hinge ANGLE (0 = flat net, 1 = fully folded). Because faces are
-  // nested in the scene graph, rotating a hinge drags all descendants with it, so
-  // flaps ride their parent panel instead of floating — a real carton assembly.
+  // SEQUENCED fold — a real carton assembles layer by layer, not all at once:
+  //   depth 1 (four walls) rise first, then depth 2 flaps close, then the lid
+  //   (deeper flaps) last. We split [0,1] into one time-slot per BFS depth so
+  //   shallow hinges finish before deep ones start; a small overlap keeps the
+  //   motion continuous. Because faces are nested in the scene graph, a flap
+  //   still rides its parent wall while waiting for its own slot (never floats).
+  var maxD = Preview3D._maxDepth || 1;
+  var slot = 1 / maxD;
+  var overlap = slot * 0.35;          // deeper stage starts a bit early -> smooth
   Preview3D._hinges.forEach(function(h) {
-    h.group.setRotationFromAxisAngle(h.axis, h.sign * Math.PI / 2 * g);
+    var d = h.depth || 1;
+    var start = (d - 1) * slot - overlap; if (start < 0) start = 0;
+    var end = d * slot;                // each depth finishes exactly at d*slot
+    var dur = end - start; if (dur < 1e-6) dur = slot;
+    var t = (g - start) / dur;
+    t = t < 0 ? 0 : (t > 1 ? 1 : t);
+    t = t * t * (3 - 2 * t);           // smoothstep easing
+    h.group.setRotationFromAxisAngle(h.axis, h.sign * Math.PI / 2 * t);
   });
 };
 
@@ -339,6 +352,10 @@ Preview3D._buildThree = function(container, boxType, params, faceData) {
   // Build scene-graph groups in BFS order. net->world flips Y so the flat net reads upright.
   var faceGroup = {};
   Preview3D._hinges = [];
+  // BFS depth per face: root = 0, walls = 1, their flaps = 2, lid = 3 ...
+  // Drives the SEQUENCED fold order in _applyFold (shallow folds first).
+  var depthOf = {}; depthOf[root] = 0;
+  var maxDepth = 1;
   var rc = fr(root);
   faceGroup[root] = new THREE.Group();
   faceGroup[root].position.set(rc.cx - bcx, -(rc.cy - bcy), 0);
@@ -356,6 +373,8 @@ Preview3D._buildThree = function(container, boxType, params, faceData) {
   order.forEach(function(key) {
     if (key === root) return;
     var pk = parentOf[key];
+    var depth = (depthOf[pk] || 0) + 1; depthOf[key] = depth;
+    if (depth > maxDepth) maxDepth = depth;
     var cur = fr(key), pr = fr(pk), ov = hingeOf[key];
     // hinge + child offsets expressed in the PARENT's local frame (Y flipped for world)
     var hLocal = new THREE.Vector3(ov.cx - pr.cx, -(ov.cy - pr.cy), 0);
@@ -380,9 +399,10 @@ Preview3D._buildThree = function(container, boxType, params, faceData) {
     hingeG.setRotationFromAxisAngle(axis, -Math.PI / 2); scene.updateMatrixWorld(true);
     var zM = fg.getWorldPosition(wp.clone()).z;
     var sign = zP >= zM ? 1 : -1;
-    Preview3D._hinges.push({ group: hingeG, axis: axis, sign: sign });
+    Preview3D._hinges.push({ group: hingeG, axis: axis, sign: sign, depth: depth });
     hingeG.setRotationFromAxisAngle(axis, 0);
   });
+  Preview3D._maxDepth = maxDepth;   // number of fold stages (drives sequencing)
 
   // One mesh per face, parented to its hinge chain.
   Preview3D._faces = [];
