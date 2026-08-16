@@ -8,7 +8,12 @@ var SVG_NS = 'http://www.w3.org/2000/svg';
 
 function svgEl(tag, attrs) {
   var el = document.createElementNS(SVG_NS, tag);
-  if (attrs) for (var k in attrs) el.setAttribute(k, attrs[k]);
+  if (attrs) for (var k in attrs) {
+    var v = attrs[k];
+    // Skip undefined / NaN attributes to avoid SVG "Expected length" errors
+    if (v === undefined || (typeof v === 'number' && isNaN(v))) continue;
+    el.setAttribute(k, v);
+  }
   return el;
 }
 

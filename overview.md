@@ -1,25 +1,35 @@
-# DieCut Designer - 部署修复总结
+# T004A 3D 折叠修复 — 会话总结
 
 ## 问题
-GitHub Pages 上尺寸调整失效，原因：
-1. **GitHub Pages 的 classic 自动构建卡住了** — 最后一次构建是 2026-07-24 01:24 UTC，之后的所有 push 都没有触发重新构建
-2. 线上的 `config.js` 返回 404，`packmage_boxtypes.js` 还是旧的硬编码 `/api/box`
-3. 页面无法调用 Cloudflare Worker API 代理，尺寸调整链路完全断开
+用户反馈 T004A「上盖插舌结构」盒型的 3D 折叠预览「底部不对，折叠也不对」。
+
+## 根因
+前次会话引入的静态铰链（static hinge）方案中，`foldMult=0` 被 JavaScript falsy 逻辑覆盖：
+```js
+var mult = h.foldMult || 1;  // 0 || 1 → 1 ❌
+```
+导致 F11-F12 前墙拼接处的静态铰链仍旋转 90°，前墙断裂，进而使附着于 F12 的底部翻片 F14 位置异常。
 
 ## 修复
-1. **创建 GitHub Actions workflow** (`.github/workflows/deploy.yml`) — 在每次 push 到 main 时自动部署到 GitHub Pages，不依赖 classic 自动构建
-2. GitHub Actions workflow 成功运行，所有文件已部署
-3. CDN 缓存已自动刷新
+1. **falsy-0 bug 修复**（preview3d.js line 74）
+   - 改为 `var mult = (h.foldMult == null) ? 1 : h.foldMult;`
+   - F12 正确保持与 F11 共面，前墙连续。
 
-## 验证结果
-| 文件 | 线上状态 |
-|------|---------|
-| `config.js` | HTTP 200 ✓ |
-| `index.html` | 包含 `<script src="config.js">` ✓ |
-| `packmage_boxtypes.js` | 使用 `DiecutConfig.apiBase` ✓ |
-| `app.js` | `updateGeometryFromAPI` 回调中有 `renderer.fit()` ✓ |
-| Cloudflare Worker | 健康检查通过 ✓ |
+2. **WebGL 截图黑屏修复**（preview3d.js line 692）
+   - 添加 `preserveDrawingBuffer: true`，支持 headless 截图验证。
 
-## 下一步
-- 在浏览器中 **Ctrl+Shift+R 硬刷新** `http://057300.xyz/diecut/`
-- 切到 Parameters 标签，修改 L/W/D 参数，等1-2秒后 SVG 应自动更新
+3. **弧线压痕提取修复**（preview3d.js line 765）
+   - arc 数据 `[cx, cy, r, sa, ea]` 原被误读为两个端点。
+   - 改为展开为 polyline 点列，与 `reconstructFacesFromFE` 保持一致。
+
+## 验证
+- 多角度浏览器截图确认：
+  - 底部翻片（F5/F2/F10/F14）均向内折叠，无外翻
+  - 前墙 F11+F12 连续，胶贴 F16 折向内侧
+  - JP012 回归测试正常
+
+## 截图
+- `_test_v18_default.png` — 默认视角完全折叠
+- `_test_v18_bottom.png` — 底部仰视
+- `_test_left_side.png` — 左侧视
+- `_test_front_view.png` — 前视

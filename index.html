@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>刀模设计器 - 纸盒刀模库</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -60,7 +60,7 @@
     <div class="panel-tabs">
       <button class="panel-tab active" data-tab="library">盒型库</button>
       <button class="panel-tab" data-tab="params">参数</button>
-      <button class="panel-tab" data-tab="threed">3D 预览</button>
+      <button class="panel-tab" data-tab="threed" style="display:none;">3D 预览</button>
     </div>
 
     <div id="tabLibrary" class="tab-content" style="display:block;">
@@ -158,7 +158,7 @@
   <section id="canvasArea">
     <div id="viewSwitch">
       <button id="btnView2D" class="view-btn active">刀模图</button>
-      <button id="btnView3D" class="view-btn">3D 预览</button>
+      <button id="btnView3D" class="view-btn" style="display:none;">3D 预览</button>
     </div>
     <div id="canvasContainer">
       <svg id="diecutSvg" xmlns="http://www.w3.org/2000/svg"></svg>
@@ -199,7 +199,7 @@
 <script src="renderer.js"></script>
 <script src="exporter.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-<script src="preview3d.js"></script>
+<script src="preview3d.js?v=7"></script>
 <script src="app.js"></script>
 </body>
 </html>

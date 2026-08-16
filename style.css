@@ -19,8 +19,18 @@ body {
   color: var(--text);
   background: var(--bg);
   overflow: hidden;
-  height: 100vh;
+  height: 100vh;          /* fallback for browsers without dvh */
+  height: 100dvh;         /* dynamic viewport height: excludes mobile browser chrome */
   user-select: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Touch: dragging the 3D model / die-cut must rotate-zoom, not scroll or pinch
+   the page. Buttons use `manipulation` to drop the 300ms tap delay + double-tap zoom. */
+#diecutSvg, #preview3d, #canvasContainer, #preview3d canvas { touch-action: none; }
+#toolbar button, .view-btn, .pt-btn, .menu-btn, .panel-tab,
+.zoom-btn, .art-face-btn, .art-clear-btn, .art-file-label, .box-current-preview {
+  touch-action: manipulation;
 }
 
 /* ===== Toolbar ===== */
@@ -28,9 +38,11 @@ body {
   display: flex;
   align-items: center;
   height: 48px;
+  height: calc(48px + env(safe-area-inset-top, 0px));
+  padding: 0 12px;
+  padding-top: env(safe-area-inset-top, 0px);
   background: var(--panel-bg);
   border-bottom: 1px solid var(--border);
-  padding: 0 12px;
   gap: 8px;
   z-index: 100;
 }
@@ -92,6 +104,7 @@ body {
 #main {
   display: flex;
   height: calc(100vh - 48px);
+  height: calc(100dvh - 48px);
 }
 
 /* ===== Parameter Panel ===== */
@@ -335,6 +348,11 @@ body {
   border-bottom: 1px solid var(--border);
   background: var(--panel-header);
   flex-shrink: 0;
+  /* Lock the 盒型库 / 参数 / 3D 标题栏 to the top of the scrolling panel so it
+     stays visible while the library / params / 3D content scrolls underneath. */
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 .panel-tab {
   flex: 1;
@@ -801,6 +819,13 @@ body {
   font-weight: 600;
 }
 .pt-play:hover { background: #2563eb; border-color: #2563eb; }
+.pt-btn.pt-playing {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #fff;
+  font-weight: 600;
+}
+.pt-btn.pt-playing:hover { background: #b91c1c; border-color: #b91c1c; }
 .pt-hint {
   flex-basis: 100%;
   text-align: center;
@@ -856,10 +881,14 @@ body {
   #paperThickness { padding: 3px 4px; font-size: 10px; }
 
   /* Left panel becomes a slide-in drawer */
-  #main { display: block; height: calc(100vh - 48px); position: relative; }
+  #main {
+    display: block;
+    height: calc(100dvh - 48px - env(safe-area-inset-top, 0px));
+    position: relative;
+  }
   #paramPanel {
     position: fixed;
-    top: 48px;
+    top: calc(48px + env(safe-area-inset-top, 0px));
     left: 0;
     bottom: 0;
     width: 84%;
@@ -902,4 +931,22 @@ body {
   .toolbar-right { gap: 4px; }
   .view-btn { font-size: 12px; padding: 8px 6px; }
   #viewSwitch { padding: 6px 8px; gap: 6px; }
+
+  /* 3D controls become a clean bottom sheet, never covering the model */
+  .preview-toolbar {
+    left: 0; right: 0; bottom: 0;
+    transform: none;
+    border-radius: 14px 14px 0 0;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    gap: 10px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .pt-group { justify-content: center; gap: 8px; flex-wrap: wrap; }
+  .pt-fold-group { flex-wrap: wrap; }
+  .pt-fold { width: 100%; max-width: none; height: 24px; }
+  .pt-fold::-webkit-slider-thumb { width: 22px; height: 22px; }
+  .pt-btn { padding: 10px 14px; font-size: 13px; }
+  .pt-hint { display: none; }
+  .pt-sep { display: none; }
 }
