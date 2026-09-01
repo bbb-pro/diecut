@@ -22,3 +22,15 @@ Thumbs.db
 
 # Server runtime
 *.log
+
+# Dev/test artifacts (Edge headless profiles, screenshots, temp harness)
+_edgeprof*/
+__pycache__/
+screenshots/
+3d_deliver/
+_srv.js
+*.bak.s1
+test_*.png
+_*.js
+_*.png
+_*.txt

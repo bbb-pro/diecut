@@ -70,6 +70,11 @@ Renderer.prototype.render = function(data) {
   // Grid
   if (this.options.showGrid) this._drawGrid(data.bbox);
 
+  // Panel overlay for the manual fold editor: filled regions the user can click
+  // to pick the panel they want to re-hang. Drawn UNDER the cut/crease lines so
+  // it never hides the dieline.
+  if (data.panels && this.options.showPanels) this._drawPanels(data.panels, data.visualGroups);
+
   // Offset drawing to center
   var pad = 20;
   var drawW = data.bbox.maxX - data.bbox.minX;
@@ -89,11 +94,13 @@ Renderer.prototype.render = function(data) {
 
   // Crease lines (dashed blue)
   var creaseGroup = svgEl('g', { 'class': 'crease-group' });
-  data.creases.forEach(function(line) {
+  data.creases.forEach(function(line, ci) {
     var pts = line.map(function(p) { return p[0] + ',' + p[1]; }).join(' ');
-    creaseGroup.appendChild(svgEl('polyline', {
+    var pl = svgEl('polyline', {
       points: pts, 'class': 'crease-line'
-    }));
+    });
+    pl.setAttribute('data-idx', ci);   // fold editor: clickable crease (hinge picking)
+    creaseGroup.appendChild(pl);
   });
   this.contentGroup.appendChild(creaseGroup);
 
@@ -145,6 +152,106 @@ Renderer.prototype._drawGrid = function(bbox) {
     }));
   }
   this.contentGroup.appendChild(gridGroup);
+};
+
+/* ===== Panel overlay (manual fold editor) =====
+ * Filled panel regions the user can click to pick a panel. Panels come from
+ * Preview3D.resolveFaces so these are exactly the shapes the 3D view folds —
+ * if the two disagreed the user would click one panel and fold another.
+ * SVG polygons carry their own hit testing, so no manual point-in-polygon. */
+Renderer.prototype._drawPanels = function(panels, visualGroups) {
+  var panelGroup = svgEl('g', { 'class': 'panel-group' });
+  this.panelGroup = panelGroup;
+
+  // Visual merge ("只显示不合并"): panels that share a horizontal crease in the
+  // same column are one continuous board. We draw them WITHOUT their own stroke
+  // so the split reads as a single board, and stitch the small crease gap with a
+  // same-colour bridge rectangle so the fill looks continuous. The fold tree and
+  // each panel's clickable region stay untouched.
+  var mergedKeys = {};
+  var bridges = [];
+  if (visualGroups && visualGroups.groups) {
+    visualGroups.groups.forEach(function(gr) {
+      gr.forEach(function(k) { mergedKeys[k] = true; });
+    });
+  }
+  if (visualGroups && visualGroups.bridges) bridges = visualGroups.bridges;
+
+  // Map panel key -> its element, so bridges can be drawn after panels (on top).
+  var byKey = {};
+  panels.forEach(function(p) {
+    var el;
+    if (p.poly && p.poly.length >= 3) {
+      el = svgEl('polygon', {
+        points: p.poly.map(function(pt) { return pt[0] + ',' + pt[1]; }).join(' '),
+        'class': 'panel-shape'
+      });
+    } else {
+      // Rectangle fallback: the panel source has no outline, only a bbox.
+      var b = p.bbox;
+      el = svgEl('rect', {
+        x: b[0], y: b[1], width: b[2] - b[0], height: b[3] - b[1],
+        'class': 'panel-shape'
+      });
+    }
+    el.setAttribute('data-key', p.key);
+    if (mergedKeys[p.key]) el.classList.add('panel-merged');   // no internal stroke
+    panelGroup.appendChild(el);
+    byKey[p.key] = el;
+  });
+
+  // Stitch the horizontal crease gaps between merged panels so the fill reads as
+  // one continuous board (the raster left a sub-millimetre wall there).
+  var GAP = 6; // bridge half-width (mm) — comfortably covers the crease wall
+  bridges.forEach(function(br) {
+    if (!mergedKeys[br.a] || !mergedKeys[br.b]) return;   // only within a board
+    var ux = br.ux, uy = br.uy;
+    var nx = -uy, ny = ux;                  // perpendicular
+    var h = br.len / 2;
+    var p1 = [br.cx - ux * h + nx * GAP, br.cy - uy * h + ny * GAP];
+    var p2 = [br.cx + ux * h + nx * GAP, br.cy + uy * h + ny * GAP];
+    var p3 = [br.cx + ux * h - nx * GAP, br.cy + uy * h - ny * GAP];
+    var p4 = [br.cx - ux * h - nx * GAP, br.cy - uy * h - ny * GAP];
+    var bEl = svgEl('polygon', {
+      points: p1.concat(p2, p3, p4).map(function(v) { return v.toFixed(2); }).join(' '),
+      'class': 'panel-shape panel-merged'
+    });
+    bEl.setAttribute('data-bridge', br.a + '-' + br.b);
+    panelGroup.appendChild(bEl);
+  });
+
+  this.contentGroup.appendChild(panelGroup);
+};
+
+/* Highlight the panel with the given key (manual fold editor selection). */
+Renderer.prototype.setPanelHighlight = function(key) {
+  if (!this.panelGroup) return;
+  var kids = this.panelGroup.childNodes;
+  for (var i = 0; i < kids.length; i++) {
+    var on = (kids[i].getAttribute('data-key') === key);
+    kids[i].classList.toggle('panel-selected', on);
+  }
+};
+
+/* Mark overridden panels on the 2D net (fold editor): user-pinned root = green,
+ * direction-flipped = amber. Purely visual, driven from app.js on each render. */
+Renderer.prototype.setPanelMarks = function(rootKey, flipKeys) {
+  if (!this.panelGroup) return;
+  var kids = this.panelGroup.childNodes;
+  for (var i = 0; i < kids.length; i++) {
+    var k = kids[i].getAttribute('data-key');
+    kids[i].classList.toggle('panel-root', k === rootKey);
+    kids[i].classList.toggle('panel-flip', !!flipKeys && flipKeys.indexOf(k) >= 0);
+  }
+};
+
+/* Highlight the crease line with the given index (fold editor crease picking). */
+Renderer.prototype.setCreaseHighlight = function(idx) {
+  var kids = this.svg.querySelectorAll('.crease-line');
+  for (var i = 0; i < kids.length; i++) {
+    kids[i].classList.toggle('crease-selected',
+      idx != null && String(idx) === kids[i].getAttribute('data-idx'));
+  }
 };
 
 /* ===== Dimension drawing ===== */
@@ -255,6 +362,7 @@ Renderer.prototype.initInteraction = function(container) {
   container.addEventListener('mousedown', function(e) {
     if (e.button === 0) {
       isDragging = true;
+      self._dragDist = 0;
       lastX = e.clientX;
       lastY = e.clientY;
       container.classList.add('dragging');
@@ -267,12 +375,44 @@ Renderer.prototype.initInteraction = function(container) {
     var dy = e.clientY - lastY;
     lastX = e.clientX;
     lastY = e.clientY;
+    self._dragDist = (self._dragDist || 0) + Math.abs(dx) + Math.abs(dy);
     self.pan(dx, dy);
   });
 
   window.addEventListener('mouseup', function() {
     isDragging = false;
     container.classList.remove('dragging');
+  });
+
+  // Manual fold editor: clicking a panel selects it, but ONLY when the pointer
+  // barely moved. Panning starts with a mousedown on whatever is under the
+  // cursor, so without this guard every drag across the net would silently
+  // re-select a panel.
+  container.addEventListener('click', function(e) {
+    if ((self._dragDist || 0) > 4) return;
+    var t = e.target;
+    if (!t || !t.getAttribute) return;
+    var cidx = t.getAttribute('data-idx');
+    if (cidx != null) {
+      if (self.onCreaseClick) self.onCreaseClick(parseInt(cidx, 10), e);
+      return;
+    }
+    var key = t.getAttribute('data-key');
+    if (key == null) return;
+    if (self.onPanelClick) self.onPanelClick(key, e);
+  });
+
+  container.addEventListener('mouseover', function(e) {
+    var t = e.target;
+    if (!t || !t.getAttribute) return;
+    var cidx = t.getAttribute('data-idx');
+    if (cidx != null) {
+      if (self.onCreaseHover) self.onCreaseHover(parseInt(cidx, 10), e);
+      return;
+    }
+    var key = t.getAttribute('data-key');
+    if (key == null) return;
+    if (self.onPanelHover) self.onPanelHover(key, e);
   });
 
   container.addEventListener('wheel', function(e) {

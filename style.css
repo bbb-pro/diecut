@@ -299,6 +299,45 @@ body {
 .grid-line-major { stroke: #e0e0e0; stroke-width: 0.3; }
 .cut-line { stroke: var(--cut-line); stroke-width: 0.6; fill: none; }
 .crease-line { stroke: var(--crease-line); stroke-width: 0.4; fill: none; stroke-dasharray: 2 1; }
+/* Manual fold editor: clickable panel fills. Kept very faint so the dieline
+   stays readable; the fill is what makes the panel clickable in SVG. */
+.panel-shape { fill: #2d7ad6; fill-opacity: 0.06; stroke: #2d7ad6; stroke-opacity: 0.22; stroke-width: 0.3; cursor: pointer; }
+.panel-shape:hover { fill-opacity: 0.17; }
+/* Visually merged boards ("只显示不合并"): a board split only by creases is drawn
+   as one piece — no internal stroke so it doesn't read as cut into panels. */
+.panel-shape.panel-merged { stroke: none; }
+.panel-shape.panel-selected { fill: #e07a2d; fill-opacity: 0.22; stroke: #e07a2d; stroke-opacity: 0.75; stroke-width: 0.6; }
+/* Override marks: user-pinned root = green, direction-flipped = amber */
+.panel-shape.panel-root { fill: #2f9e5f; fill-opacity: 0.2; stroke: #2f9e5f; stroke-opacity: 0.8; stroke-width: 0.6; }
+.panel-shape.panel-flip { fill: #d6a52d; fill-opacity: 0.16; stroke: #d6a52d; stroke-opacity: 0.7; stroke-width: 0.5; }
+/* Clickable crease (hinge picking) */
+.crease-line { cursor: pointer; }
+.crease-line:hover { stroke-width: 0.8; stroke: #185fa5; }
+.crease-line.crease-selected { stroke: #e07a2d; stroke-width: 0.9; stroke-dasharray: none; }
+
+/* ===== Fold editor sidebar section ===== */
+.fold-sel-status { font-size: 11px; color: var(--text-muted); margin: 6px 0 8px; }
+.fold-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.fold-btn {
+  font-size: 11px; padding: 4px 10px; border: 1px solid var(--border);
+  background: var(--panel-bg); border-radius: 6px; cursor: pointer; color: var(--text);
+}
+.fold-btn:hover:not(:disabled) { border-color: #2d7ad6; color: #2d7ad6; }
+.fold-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.fold-btn-warn:hover:not(:disabled) { border-color: #e53e3e; color: #e53e3e; }
+.fold-ov-list { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
+.fold-ov-item {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 11px; padding: 3px 6px; border-radius: 4px;
+  background: var(--panel-bg); border: 1px solid var(--border);
+}
+.fold-ov-del {
+  border: none; background: none; color: #999; cursor: pointer;
+  font-size: 13px; line-height: 1; padding: 0 2px;
+}
+.fold-ov-del:hover { color: #e53e3e; }
+.fold-ov-empty { font-size: 11px; color: var(--text-muted); font-style: italic; }
+.fold-ov-hint { font-size: 10px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
 .dim-line { stroke: var(--dim-line); stroke-width: 0.2; fill: none; }
 .dim-text { font-size: 3px; fill: var(--dim-line); text-anchor: middle; font-family: "SF Mono", Consolas, monospace; }
 .dim-tick { stroke: var(--dim-line); stroke-width: 0.2; fill: none; }
@@ -833,6 +872,60 @@ body {
   color: #94a3b8;
   margin-top: 2px;
 }
+
+/* View presets (packmage-style) */
+.pt-view-presets { gap: 6px; flex-wrap: wrap; justify-content: center; }
+.pt-btn.pt-preset { padding: 5px 10px; font-size: 12px; }
+.pt-btn.pt-preset.pt-active {
+  background: #3182ce;
+  border-color: #3182ce;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* 3D 侧边栏：显示模式 / 纸样底色 / 灯光 / 背景 */
+.seg-row { display: flex; gap: 8px; }
+.seg-btn {
+  flex: 1;
+  padding: 7px 0;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.seg-btn:hover { background: #f1f5f9; border-color: #94a3b8; }
+.seg-btn.active {
+  background: #3182ce;
+  border-color: #3182ce;
+  color: #fff;
+  font-weight: 600;
+}
+.paper-swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+.swatch {
+  width: 30px; height: 30px;
+  border: 2px solid #e2e8f0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: border-color .15s, transform .1s;
+}
+.swatch:hover { transform: scale(1.1); }
+.swatch.active { border-color: #3182ce; box-shadow: 0 0 0 2px rgba(49,130,206,0.25); }
+.bg-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.bg-btn {
+  padding: 5px 10px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background .15s, border-color .15s;
+}
+.bg-btn:hover { background: #f1f5f9; }
+.bg-btn.active { background: #3182ce; border-color: #3182ce; color: #fff; }
 
 /* 3D 标签页：贴图卡片更紧凑 */
 #tabThree .panel-section { margin-bottom: 14px; }

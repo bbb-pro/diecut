@@ -14,6 +14,12 @@
       showLabels: false,
       viewMode: '2d',
       artFace: 'M0',
+      // Manual fold editor
+      showPanels: true,
+      selectedPanel: null,
+      selectedCrease: null,
+      linkFrom: null,   // two-step hinge linking: first panel picked
+      foldOv: { items: [], stale: false },
     },
     renderer: null,
     currentData: null,
@@ -22,10 +28,15 @@
     isLoadingGeometry: false,
 
     init: function() {
+      var self = this;
       var svg = document.getElementById('diecutSvg');
       this.renderer = new Renderer(svg);
       this.renderer.resize();
       this.renderer.initInteraction(document.getElementById('canvasContainer'));
+      // Manual fold editor: clicking a panel in the 2D dieline selects it, so it
+      // can then be re-hung in 3D. Clicking a crease selects that fold line (S3).
+      this.renderer.onPanelClick = function(key) { self.selectPanel(key); };
+      this.renderer.onCreaseClick = function(idx) { self.selectCrease(idx); };
 
       // Use ONLY packmage box types (no FEFCO)
       if (typeof PackmageBoxTypes !== 'undefined') {
@@ -39,7 +50,6 @@
       this.switchTab('library');
       this.renderer.fit();
 
-      var self = this;
       window.addEventListener('resize', function() {
         self.renderer.resize();
         self.renderer.fit();
@@ -87,6 +97,7 @@
 
       // Compute derived params
       if (bt.compute) bt.compute(this.state.params);
+      this._foldOvLoad();   // per-box overrides; fingerprint mismatch wipes them
       this.renderParams();
       this.render();
       if (this.state.viewMode === '3d') this.render3D();
@@ -236,6 +247,7 @@
       bt.updateGeometry(this.state.params, function(success) {
         self.showLoading(false);
         try {
+          self._foldOvLoad();   // params may have changed → invalidate stale overrides
           if (bt.compute) bt.compute(self.state.params);
           self.render();
           self.renderer.fit();
@@ -294,12 +306,542 @@
       var data = bt.draw(this.state.params, comp);
       this.currentData = data;
 
+      // Manual fold editor: the clickable panel overlay. Resolved through
+      // Preview3D.resolveFaces so these are exactly the panels the 3D view folds.
+      data.panels = this.resolvePanels(bt);
+      // Visual merge groups ("只显示不合并"): which panels belong to one
+      // continuous board split only by creases. The 2D renderer draws each group
+      // as a single board (same fill, no internal boundary) without touching the
+      // fold tree. Null/empty when unavailable.
+      data.visualGroups = this.visualMergeGroups(bt);
+
       this.renderer.setOptions({
         showDims: this.state.showDims,
         showGrid: this.state.showGrid,
         showLabels: this.state.showLabels,
+        showPanels: this.state.showPanels,
       });
       this.renderer.render(data);
+      // Highlight the user's overrides on the 2D net (root pin + direction flips).
+      // Must run AFTER render(): render rebuilds the whole SVG and would wipe them.
+      var _ov2d = this._foldOvMap(null);
+      this.renderer.setPanelMarks(_ov2d.root, _ov2d.flips);
+      this.renderer.setPanelHighlight(this.state.selectedPanel);
+    },
+
+    /* Panels for the 2D overlay, straight from the 3D panel resolver.
+     * Returns null when the resolver is unavailable, which simply means the
+     * overlay is not drawn — the dieline itself is unaffected. */
+    resolvePanels: function(bt) {
+      if (typeof Preview3D === 'undefined' || !Preview3D.resolveFaces) return null;
+      try {
+        var r = Preview3D.resolveFaces(bt);
+        if (!r || !r.faceData) return null;
+        var keys = Object.keys(r.faceData);
+        var out = [];
+        keys.forEach(function(k) {
+          out.push({ key: k, bbox: r.faceData[k], poly: r.polys[k] || null });
+        });
+        return out.length ? out : null;
+      } catch (e) {
+        return null;
+      }
+    },
+
+    /* Visual merge groups for the 2D net. Returns Preview3D.computeVisualGroups
+     * result ({groups, bridges}) or null when the resolver is unavailable.
+     * Whitelisted box types only: the merge fixes cartons whose long walls are
+     * split into thin strips by horizontal creases (A042's left wall). Other
+     * box types keep their normal lid/body/base panel split, so they are NOT
+     * merged here — otherwise their fold flaps would visually fuse. */
+    visualMergeGroups: function(bt) {
+      if (typeof Preview3D === 'undefined' || !Preview3D.computeVisualGroups) return null;
+      var id = (bt && bt.id) || '';
+      var enabled = ['A042'].indexOf(id) >= 0;
+      if (!enabled) return null;
+      try {
+        return Preview3D.computeVisualGroups(bt);
+      } catch (e) {
+        return null;
+      }
+    },
+
+    /* ===== Manual fold editor: selection + overrides ===== */
+
+    selectPanel: function(key) {
+      // Two-step hinge linking ("两板连铰链"): a panel is already picked as
+      // endpoint A, so this click is endpoint B — create the forced hinge and
+      // leave normal selection untouched.
+      if (this.state.linkFrom && key && key !== this.state.linkFrom) {
+        var a = this.state.linkFrom;
+        this.state.linkFrom = null;
+        this.state.selectedPanel = key;
+        this.renderer.setPanelHighlight(key);
+        this.renderer.setCreaseHighlight(null);
+        this._foldSelStatus();
+        this._addPanelHinge(a, key);
+        return;
+      }
+      if (this.state.linkFrom && key === this.state.linkFrom) this.state.linkFrom = null;
+      this.state.selectedPanel = (this.state.selectedPanel === key) ? null : key;
+      this.state.selectedCrease = null;
+      this.renderer.setPanelHighlight(this.state.selectedPanel);
+      this.renderer.setCreaseHighlight(null);
+      // Sync the 3D highlight so the picked panel glows there too. Cheap call
+      // (just sets emissive on the right materials) and safe when 3D is not
+      // mounted — setSelected is undefined in that case.
+      if (typeof Preview3D !== 'undefined' && Preview3D.setSelected) {
+        Preview3D.setSelected(this.state.selectedPanel);
+      }
+      this._foldSelStatus();
+    },
+
+    selectCrease: function(idx) {
+      this.state.selectedCrease = (this.state.selectedCrease === idx) ? null : idx;
+      this.state.selectedPanel = null;
+      this.state.linkFrom = null;
+      this.renderer.setPanelHighlight(null);
+      this.renderer.setCreaseHighlight(this.state.selectedCrease);
+      // Picking a crease deselects the panel; clear the 3D highlight as well.
+      if (typeof Preview3D !== 'undefined' && Preview3D.setSelected) {
+        Preview3D.setSelected(null);
+      }
+      this._foldSelStatus();
+    },
+
+    /* One line of feedback under the fold editor buttons. */
+    _foldSelStatus: function() {
+      var el = document.getElementById('foldSelInfo');
+      if (el) {
+        el.textContent = this.state.linkFrom
+          ? '连接模式：已选 ' + this.state.linkFrom + '，再点另一块面板组成铰链（点同一面板取消）'
+          : (this.state.selectedPanel
+              ? '已选中面板 ' + this.state.selectedPanel
+              : (this.state.selectedCrease != null
+                  ? '已选中压痕线 #' + this.state.selectedCrease
+                  : '未选中（在刀模图上点选面板或压痕线）'));
+      }
+      var hasPanel = !!this.state.selectedPanel;
+      var hasCrease = this.state.selectedCrease != null;
+      var bRoot = document.getElementById('btnSetRoot');
+      var bFlip = document.getElementById('btnFlipHinge');
+      var bCreaseHinge = document.getElementById('btnCreaseHinge');
+      var bCreaseNofold = document.getElementById('btnCreaseNofold');
+      var bLink = document.getElementById('btnLinkHinge');
+      var bAngle = document.getElementById('btnFoldAngle');
+      if (bRoot) bRoot.disabled = !hasPanel;
+      if (bFlip) bFlip.disabled = !hasPanel;
+      if (bCreaseHinge) bCreaseHinge.disabled = !hasCrease;
+      if (bCreaseNofold) bCreaseNofold.disabled = !hasCrease;
+      if (bLink) {
+        bLink.disabled = !hasPanel;
+        bLink.textContent = this.state.linkFrom ? '取消连接' : '两板连铰链';
+      }
+      if (bAngle) bAngle.disabled = !hasPanel;
+    },
+
+    /* Size fingerprint: any param change invalidates the stored overrides. */
+    _foldOvFp: function() {
+      var p = this.state.params || {};
+      return Object.keys(p).sort().map(function(k) {
+        return k + '=' + (typeof p[k] === 'number' ? Math.round(p[k]) : p[k]);
+      }).join('&');
+    },
+
+    /* Load overrides for the current box from localStorage; a fingerprint
+     * mismatch wipes them (the dieline was regenerated, stored geometry may
+     * point at different panels now). */
+    _foldOvLoad: function() {
+      var bt = this.allBoxTypes[this.state.boxTypeIndex];
+      var fp = this._foldOvFp();
+      var res = { items: [], stale: false };
+      try {
+        var raw = localStorage.getItem('packmage.foldov.' + bt.id);
+        if (raw) {
+          var obj = JSON.parse(raw);
+          if (obj && Array.isArray(obj.items) && obj.fp === fp) res.items = obj.items;
+          else if (obj && Array.isArray(obj.items)) res.stale = true;
+        }
+      } catch (e) { /* corrupt entry: start clean */ }
+      this.state.foldOv = res;
+      this.renderFoldOvList();
+      if (res.stale) this.showStatus('尺寸参数已变化，先前的手动折叠调整已失效');
+    },
+
+    _foldOvSave: function(items) {
+      var bt = this.allBoxTypes[this.state.boxTypeIndex];
+      try {
+        if (!items.length) localStorage.removeItem('packmage.foldov.' + bt.id);
+        else localStorage.setItem('packmage.foldov.' + bt.id,
+          JSON.stringify({ v: 1, boxId: bt.id, fp: this._foldOvFp(), items: items }));
+      } catch (e) { /* storage full / disabled: session-only */ }
+      this.state.foldOv.items = items;
+      this.state.foldOv.stale = false;
+      this.renderFoldOvList();
+    },
+
+    /* bbox centre of the given panel — the geometry we store (never the index:
+     * after a resize the fe array is regenerated and indices shift). */
+    _panelCenter: function(key) {
+      var bt = this.allBoxTypes[this.state.boxTypeIndex];
+      try {
+        var r = Preview3D.resolveFaces(bt);
+        var b = r && r.faceData && r.faceData[key];
+        if (b && b.length >= 4) return [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2];
+      } catch (e) {}
+      return null;
+    },
+
+    /* Which panel key owns point p? Smallest containing panel wins — raster
+     * panels do not overlap, but bbox rounding can nest a flap inside a body. */
+    _foldOvKeyAt: function(p, fd) {
+      if (!p || !fd) return null;
+      var best = null, bestA = Infinity;
+      Object.keys(fd).forEach(function(k) {
+        var b = fd[k];
+        if (!b || b.length < 4) return;
+        if (p[0] >= b[0] && p[0] <= b[2] && p[1] >= b[1] && p[1] <= b[3]) {
+          var a = (b[2] - b[0]) * (b[3] - b[1]);
+          if (a < bestA) { bestA = a; best = k; }
+        }
+      });
+      return best;
+    },
+
+    /* Current faceData (the exact panel geometry the 3D build folds). */
+    _foldFd: function() {
+      try {
+        if (typeof Preview3D === 'undefined' || !Preview3D.resolveFaces) return null;
+        var bt = this.allBoxTypes[this.state.boxTypeIndex];
+        var r = Preview3D.resolveFaces(bt);
+        return (r && r.faceData) || null;
+      } catch (e) { return null; }
+    },
+
+    /* Longest straight run in a crease polyline (consecutive collinear points
+     * merged) — the segment a forced hinge / nofold ban is stored as. */
+    _longestStraightSeg: function(line) {
+      if (!line || line.length < 2) return null;
+      var best = null, i = 0;
+      while (i < line.length - 1) {
+        var j = i + 1;
+        while (j < line.length - 1) {
+          var ux = line[j][0] - line[i][0], uy = line[j][1] - line[i][1];
+          var vx = line[j + 1][0] - line[j][0], vy = line[j + 1][1] - line[j][1];
+          var L1 = Math.hypot(ux, uy), L2 = Math.hypot(vx, vy);
+          if (L2 < 1e-9 || Math.abs(ux * vy - uy * vx) > 1e-6 * L1 * L2) break;
+          j++;
+        }
+        var len = Math.hypot(line[j][0] - line[i][0], line[j][1] - line[i][1]);
+        if (!best || len > best.len) {
+          best = { g: [line[i][0], line[i][1], line[j][0], line[j][1]], len: len };
+        }
+        i = j;
+      }
+      return best ? best.g : null;
+    },
+
+    /* Segment [x1,y1,x2,y2] -> the hinge-axis object shape the 3D build
+     * consumes (same fields as an edgesOverlap result: orient/cx/cy/dir/len). */
+    _ovFromSeg: function(g) {
+      if (!g || g.length < 4) return null;
+      var dx = g[2] - g[0], dy = g[3] - g[1];
+      var len = Math.hypot(dx, dy);
+      if (len < 1e-6) return null;
+      var orient = Math.abs(dx) >= Math.abs(dy) ? 'h' : 'v';
+      return {
+        x1: Math.min(g[0], g[2]), y1: Math.min(g[1], g[3]),
+        x2: Math.max(g[0], g[2]), y2: Math.max(g[1], g[3]),
+        orient: orient,
+        cx: (g[0] + g[2]) / 2, cy: (g[1] + g[3]) / 2,
+        dir: orient === 'h' ? { x: dx >= 0 ? 1 : -1, y: 0 } : { x: 0, y: dy >= 0 ? 1 : -1 },
+        len: len
+      };
+    },
+
+    /* Nearest panel to point p. Strict containment wins FIRST (smallest
+     * containing panel, matching _foldOvKeyAt's nesting rule); the tol-mm
+     * radius (2 mm default — bbox rounding on shared edges puts the probe
+     * just outside both boxes) is only a fallback. Order matters: on a shared
+     * edge the outside probe sits 1.5 mm from the SMALL neighbour, which would
+     * otherwise beat the panel that actually contains the probe. */
+    _panelNear: function(p, fd, tol) {
+      tol = tol || 2;
+      var best = null, bestA = Infinity;
+      Object.keys(fd).forEach(function(k) {
+        var b = fd[k];
+        if (!b || b.length < 4) return;
+        if (p[0] >= b[0] && p[0] <= b[2] && p[1] >= b[1] && p[1] <= b[3]) {
+          var a0 = (b[2] - b[0]) * (b[3] - b[1]);
+          if (a0 < bestA) { bestA = a0; best = k; }
+        }
+      });
+      if (best) return best;
+      var bestD = Infinity;
+      Object.keys(fd).forEach(function(k) {
+        var b = fd[k];
+        if (!b || b.length < 4) return;
+        var dx = Math.max(b[0] - p[0], 0, p[0] - b[2]);
+        var dy = Math.max(b[1] - p[1], 0, p[1] - b[3]);
+        var d = Math.hypot(dx, dy);
+        if (d <= tol) {
+          var a = (b[2] - b[0]) * (b[3] - b[1]);
+          if (a < bestA || (a === bestA && d < bestD)) { bestA = a; bestD = d; best = k; }
+        }
+      });
+      return best;
+    },
+
+    /* Which two panels sit on either side of segment g? Samples the segment and
+     * probes 1.5 mm out on both sides; a side needs >=50% of samples hitting one
+     * and the same panel. Parent = the larger panel (fold trees root at bodies,
+     * not flaps). Returns {parent, child} or null. */
+    _hingePairFromSeg: function(g, fd) {
+      if (!g || g.length < 4 || !fd) return null;
+      var L = Math.hypot(g[2] - g[0], g[3] - g[1]);
+      if (L < 2) return null;
+      var ux = (g[2] - g[0]) / L, uy = (g[3] - g[1]) / L;
+      var nx = -uy, ny = ux;
+      var n = Math.max(6, Math.min(40, Math.round(L / 5)));
+      var PROBE = 1.5;
+      var sideA = {}, sideB = {}, hits = 0;
+      for (var i = 0; i <= n; i++) {
+        var t = i / n;
+        var px = g[0] + (g[2] - g[0]) * t, py = g[1] + (g[3] - g[1]) * t;
+        var ka = this._panelNear([px + nx * PROBE, py + ny * PROBE], fd, 2);
+        var kb = this._panelNear([px - nx * PROBE, py - ny * PROBE], fd, 2);
+        if (ka && kb && ka !== kb) {
+          sideA[ka] = (sideA[ka] || 0) + 1;
+          sideB[kb] = (sideB[kb] || 0) + 1;
+          hits++;
+        }
+      }
+      if (!hits || hits < n * 0.5) return null;
+      var bestA = null, cA = 0, bestB = null, cB = 0;
+      Object.keys(sideA).forEach(function(k) { if (sideA[k] > cA) { cA = sideA[k]; bestA = k; } });
+      Object.keys(sideB).forEach(function(k) { if (sideB[k] > cB) { cB = sideB[k]; bestB = k; } });
+      if (!bestA || !bestB || bestA === bestB) return null;
+      if (cA < hits * 0.5 || cB < hits * 0.5) return null;
+      var ba = fd[bestA], bb = fd[bestB];
+      if (!ba || !bb) return null;
+      var areaA = (ba[2] - ba[0]) * (ba[3] - ba[1]);
+      var areaB = (bb[2] - bb[0]) * (bb[3] - bb[1]);
+      return areaA >= areaB
+        ? { parent: bestA, child: bestB }
+        : { parent: bestB, child: bestA };
+    },
+
+    /* Longest shared edge between two panel bboxes (2 mm tolerance). This is
+     * the hinge axis stored for a two-panel forced link. */
+    _sharedEdgeSeg: function(ka, kb, fd) {
+      var a = fd[ka], b = fd[kb];
+      if (!a || !b || a.length < 4 || b.length < 4) return null;
+      var TOL = 2;
+      var cands = [
+        { fixed: a[2], other: b[0], vert: true  },   // a right edge ≈ b left edge
+        { fixed: a[0], other: b[2], vert: true  },
+        { fixed: a[3], other: b[1], vert: false },   // a bottom ≈ b top (net coords)
+        { fixed: a[1], other: b[3], vert: false }
+      ];
+      var best = null;
+      cands.forEach(function(c) {
+        if (Math.abs(c.fixed - c.other) > TOL) return;
+        var lo, hi;
+        if (c.vert) {
+          lo = Math.max(Math.min(a[1], a[3]), Math.min(b[1], b[3]));
+          hi = Math.min(Math.max(a[1], a[3]), Math.max(b[1], b[3]));
+        } else {
+          lo = Math.max(Math.min(a[0], a[2]), Math.min(b[0], b[2]));
+          hi = Math.min(Math.max(a[0], a[2]), Math.max(b[0], b[2]));
+        }
+        if (hi - lo < 2) return;
+        if (!best || hi - lo > best.len) {
+          best = c.vert
+            ? { g: [c.fixed, lo, c.fixed, hi], len: hi - lo }
+            : { g: [lo, c.fixed, hi, c.fixed], len: hi - lo };
+        }
+      });
+      return best ? best.g : null;
+    },
+
+    /* Current overrides resolved to panel keys (what 3D consumes and what the
+     * 2D net highlights). Uses the same resolveFaces the 3D build uses.
+     * S3/S4: hinge items resolve to {parent, child, ov} pairs (child-keyed so a
+     * later instruction for the same panel wins), nofold items to banned
+     * 'a|b' pairs, angle items to {key: foldMult} (180° -> 2, 0° -> 0). */
+    _foldOvMap: function(fd) {
+      var out = { root: null, flips: [], hinges: [], nofolds: [], angles: {} };
+      var ov = this.state.foldOv;
+      if (!ov || !ov.items || !ov.items.length) return out;
+      if (!fd) fd = this._foldFd();
+      if (!fd) return out;
+      var self = this;
+      var hMap = {};
+      ov.items.forEach(function(it) {
+        if (it.t === 'root' || it.t === 'flip') {
+          var k = self._foldOvKeyAt(it.p, fd);
+          if (!k) return;
+          if (it.t === 'root') out.root = k;
+          else if (out.flips.indexOf(k) < 0) out.flips.push(k);
+        } else if (it.t === 'hinge' && it.g && it.g.length >= 4) {
+          var pair = self._hingePairFromSeg(it.g, fd);
+          var ovs = self._ovFromSeg(it.g);
+          if (pair && ovs) hMap[pair.child] = { parent: pair.parent, child: pair.child, ov: ovs };
+        } else if (it.t === 'nofold' && it.g && it.g.length >= 4) {
+          var p2 = self._hingePairFromSeg(it.g, fd);
+          if (!p2) return;
+          var kk = p2.parent < p2.child ? p2.parent + '|' + p2.child : p2.child + '|' + p2.parent;
+          if (out.nofolds.indexOf(kk) < 0) out.nofolds.push(kk);
+        } else if (it.t === 'angle') {
+          var k3 = self._foldOvKeyAt(it.p, fd);
+          if (k3) out.angles[k3] = (it.deg === 180) ? 2 : 0;
+        }
+      });
+      Object.keys(hMap).forEach(function(c) { out.hinges.push(hMap[c]); });
+      return out;
+    },
+
+    /* Pin the selected panel as the fold-tree base (replaces any old pin). */
+    setFoldRoot: function() {
+      var key = this.state.selectedPanel;
+      if (!key) return;
+      var p = this._panelCenter(key);
+      if (!p) { this.showStatus('无法定位该面板，请重试'); return; }
+      var items = (this.state.foldOv.items || []).filter(function(it) { return it.t !== 'root'; });
+      items.unshift({ t: 'root', p: p, k: key });
+      this._foldOvSave(items);
+      this.showStatus('已把 ' + key + ' 设为固定面，切换 3D 预览生效');
+    },
+
+    /* Toggle a fold-direction flip on the selected panel. */
+    toggleFoldFlip: function() {
+      var key = this.state.selectedPanel;
+      if (!key) return;
+      var p = this._panelCenter(key);
+      if (!p) { this.showStatus('无法定位该面板，请重试'); return; }
+      var items = (this.state.foldOv.items || []).slice();
+      var hit = -1;
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        if (it.t === 'flip' && Math.hypot(it.p[0] - p[0], it.p[1] - p[1]) < 1) { hit = i; break; }
+      }
+      if (hit >= 0) {
+        items.splice(hit, 1);
+        this.showStatus('已取消 ' + key + ' 的折向翻转');
+      } else {
+        items.push({ t: 'flip', p: p, k: key });
+        this.showStatus('已翻转 ' + key + ' 的折向，切换 3D 预览生效');
+      }
+      this._foldOvSave(items);
+    },
+
+    /* S3: the selected crease line becomes a forced hinge ("线→铰链") or a
+     * banned fold ("线→禁止折叠"). Both are stored as GEOMETRY (the longest
+     * straight segment of the line); the panel pair is re-resolved from that
+     * geometry at map time, so a re-render never desyncs. */
+    setCreaseHinge: function(ban) {
+      var idx = this.state.selectedCrease;
+      if (idx == null || !this.currentData || !this.currentData.creases) return;
+      var line = this.currentData.creases[idx];
+      var g = this._longestStraightSeg(line);
+      if (!g) { this.showStatus('该压痕线无法解析出直线段'); return; }
+      var fd = this._foldFd();
+      if (!fd) { this.showStatus('无法解析面板几何'); return; }
+      var pair = this._hingePairFromSeg(g, fd);
+      if (!pair) { this.showStatus('无法从这条线的两侧解析出两个面板'); return; }
+      var items = (this.state.foldOv.items || []).filter(function(it) {
+        return !(it.t === 'hinge' && it.g && it.g.length === 4 &&
+                 it.g[0] === g[0] && it.g[1] === g[1] && it.g[2] === g[2] && it.g[3] === g[3]);
+      });
+      if (ban) {
+        items.push({ t: 'nofold', g: g, k: pair.parent + '|' + pair.child });
+        this.showStatus('已禁止 ' + pair.parent + ' — ' + pair.child + ' 之间折叠，切换 3D 预览生效');
+      } else {
+        items.push({ t: 'hinge', g: g, k: pair.parent + '>' + pair.child });
+        this.showStatus('已强制铰链 ' + pair.parent + ' → ' + pair.child + '，切换 3D 预览生效');
+      }
+      this._foldOvSave(items);
+    },
+
+    /* S3, two-step mode: pick panel A, press the button, pick panel B — the
+     * panels' longest shared edge becomes a forced hinge. */
+    beginLinkHinge: function() {
+      var key = this.state.selectedPanel;
+      if (!key) return;
+      this.state.linkFrom = this.state.linkFrom ? null : key;
+      if (!this.state.linkFrom) this.showStatus('已取消连接模式');
+      this._foldSelStatus();
+    },
+
+    _addPanelHinge: function(ka, kb) {
+      var fd = this._foldFd();
+      if (!fd || !fd[ka] || !fd[kb]) { this.showStatus('无法解析面板几何'); return; }
+      var g = this._sharedEdgeSeg(ka, kb, fd);
+      if (!g) {
+        this.showStatus(ka + ' 与 ' + kb + ' 没有共享边（容差 2mm），无法连铰链');
+        return;
+      }
+      var items = (this.state.foldOv.items || []).filter(function(it) {
+        return !(it.t === 'hinge' && it.g && it.g.length === 4 &&
+                 it.g[0] === g[0] && it.g[1] === g[1] && it.g[2] === g[2] && it.g[3] === g[3]);
+      });
+      items.push({ t: 'hinge', g: g, k: ka + '>' + kb });
+      this._foldOvSave(items);
+      this.showStatus('已强制铰链 ' + ka + ' → ' + kb + '，切换 3D 预览生效');
+    },
+
+    /* S4: cycle the selected panel's fold angle 180° → 0° → default. */
+    toggleFoldAngle: function() {
+      var key = this.state.selectedPanel;
+      if (!key) return;
+      var p = this._panelCenter(key);
+      if (!p) { this.showStatus('无法定位该面板，请重试'); return; }
+      var items = (this.state.foldOv.items || []).slice();
+      var hit = -1;
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        if (it.t === 'angle' && Math.hypot(it.p[0] - p[0], it.p[1] - p[1]) < 1) { hit = i; break; }
+      }
+      if (hit < 0) {
+        items.push({ t: 'angle', p: p, deg: 180, k: key });
+        this.showStatus(key + ' 折叠角度 → 180°，切换 3D 预览生效');
+      } else if (items[hit].deg === 180) {
+        items[hit].deg = 0;
+        this.showStatus(key + ' 折叠角度 → 0°（保持平展）');
+      } else {
+        items.splice(hit, 1);
+        this.showStatus('已恢复 ' + key + ' 的默认折叠角度');
+      }
+      this._foldOvSave(items);
+    },
+
+    clearFoldOv: function() {
+      this._foldOvSave([]);
+      this.showStatus('已清除全部手动折叠调整');
+    },
+
+    /* Sidebar list of the current overrides, each with a delete button. */
+    renderFoldOvList: function() {
+      var el = document.getElementById('foldOvList');
+      if (!el) return;
+      var items = (this.state.foldOv && this.state.foldOv.items) || [];
+      if (!items.length) {
+        el.innerHTML = '<div class="fold-ov-empty">无手动调整</div>';
+        return;
+      }
+      var html = '';
+      items.forEach(function(it, i) {
+        var label = it.t === 'root' ? '固定面'
+          : it.t === 'flip' ? '翻转折向'
+          : it.t === 'hinge' ? '强制铰链'
+          : it.t === 'nofold' ? '禁止折叠'
+          : it.t === 'angle' ? ('折叠 ' + it.deg + '°')
+          : it.t;
+        html += '<div class="fold-ov-item"><span>' + label +
+          (it.k ? ' · ' + it.k : '') + '</span>' +
+          '<button class="fold-ov-del" data-idx="' + i + '" title="删除">&times;</button></div>';
+      });
+      el.innerHTML = html;
     },
 
     /* ===== 3D preview ===== */
@@ -308,6 +850,15 @@
       var bt = this.allBoxTypes[this.state.boxTypeIndex];
       var container = document.getElementById('preview3d');
       if (!container) return;
+      // Fold editor: hand the manual overrides to the 3D build before rendering.
+      var _ov = this._foldOvMap(null);
+      Preview3D._overrides = (_ov.root || _ov.flips.length || _ov.hinges.length ||
+        _ov.nofolds.length || Object.keys(_ov.angles).length) ? _ov : null;
+      // 3D picking: a short click (no drag) raycasts the panel mesh and routes
+      // the hit through the same selector the 2D dieline uses, so the manual
+      // fold editor sees a unified "selected panel" regardless of view.
+      var self = this;
+      Preview3D.onPanelClick = function(key) { self.selectPanel(key); };
       Preview3D.render(container, bt, this.state.params);
       var info = document.getElementById('boxInfo3D');
       if (info) {
@@ -626,6 +1177,11 @@
         self.render();
       });
 
+      document.getElementById('chkPanels').addEventListener('change', function() {
+        self.state.showPanels = this.checked;
+        self.render();
+      });
+
       // Paper thickness compensation — sends CAL param to packmage API
       document.getElementById('chkCompensation').addEventListener('change', function() {
         var thickness = parseFloat(document.getElementById('paperThickness').value);
@@ -729,6 +1285,33 @@
         self.showStatus('已清除全部贴图');
       });
 
+      // Manual fold editor buttons (2D 侧栏「折叠调整」)
+      var bFoldRoot = document.getElementById('btnSetRoot');
+      var bFoldFlip = document.getElementById('btnFlipHinge');
+      var bFoldClr = document.getElementById('btnClearFoldOv');
+      var bCreaseHinge = document.getElementById('btnCreaseHinge');
+      var bCreaseNofold = document.getElementById('btnCreaseNofold');
+      var bLinkHinge = document.getElementById('btnLinkHinge');
+      var bFoldAngle = document.getElementById('btnFoldAngle');
+      if (bFoldRoot) bFoldRoot.addEventListener('click', function() { self.setFoldRoot(); });
+      if (bFoldFlip) bFoldFlip.addEventListener('click', function() { self.toggleFoldFlip(); });
+      if (bFoldClr) bFoldClr.addEventListener('click', function() { self.clearFoldOv(); });
+      if (bCreaseHinge) bCreaseHinge.addEventListener('click', function() { self.setCreaseHinge(false); });
+      if (bCreaseNofold) bCreaseNofold.addEventListener('click', function() { self.setCreaseHinge(true); });
+      if (bLinkHinge) bLinkHinge.addEventListener('click', function() { self.beginLinkHinge(); });
+      if (bFoldAngle) bFoldAngle.addEventListener('click', function() { self.toggleFoldAngle(); });
+      var ovListEl = document.getElementById('foldOvList');
+      if (ovListEl) ovListEl.addEventListener('click', function(e) {
+        var btn = e.target.closest ? e.target.closest('.fold-ov-del') : null;
+        if (!btn) return;
+        var i = parseInt(btn.getAttribute('data-idx'), 10);
+        var items = (self.state.foldOv.items || []).slice();
+        if (i >= 0 && i < items.length) {
+          items.splice(i, 1);
+          self._foldOvSave(items);
+        }
+      });
+
       // Fold animation (3D折叠) — 点击"播放"循环折叠/展开(ping-pong)，再次点击暂停
       var foldSlider = document.getElementById('foldSlider');
       var btnFoldPlay = document.getElementById('btnFoldPlay');
@@ -784,6 +1367,90 @@
       if (btnZoomOut3) btnZoomOut3.addEventListener('click', function() {
         if (typeof Preview3D !== 'undefined' && Preview3D._viewZoom) Preview3D._viewZoom(1 / 1.15);
       });
+
+      // packmage-style view presets (展开/正面/左面/背面/右面/顶部/底部)
+      var presetButtons = document.querySelectorAll('#viewPresetGroup .pt-preset');
+      function clearPresetActive() {
+        presetButtons.forEach(function(b) { b.classList.remove('pt-active'); });
+      }
+      function setPresetActive(name) {
+        clearPresetActive();
+        var btn = document.querySelector('#viewPresetGroup .pt-preset[data-preset="' + name + '"]');
+        if (btn) btn.classList.add('pt-active');
+      }
+      presetButtons.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var name = this.getAttribute('data-preset');
+          if (typeof Preview3D !== 'undefined' && Preview3D.setViewPreset) {
+            Preview3D.setViewPreset(name);
+          }
+          setPresetActive(name);
+        });
+      });
+      // Keep the preset highlighted when the user picks one from the toolbar;
+      // a manual drag clears it (handled in preview3d via _currentPreset).
+      if (typeof Preview3D !== 'undefined') {
+        Preview3D._presetChanged = function(name) { setPresetActive(name); };
+      }
+
+      // Display mode (彩样/白样/骨架线)
+      var modeButtons = document.querySelectorAll('#displayModeGroup .seg-btn');
+      modeButtons.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          modeButtons.forEach(function(b) { b.classList.remove('active'); });
+          this.classList.add('active');
+          var mode = this.getAttribute('data-mode');
+          if (typeof Preview3D !== 'undefined' && Preview3D.setDisplayMode) Preview3D.setDisplayMode(mode);
+        });
+      });
+
+      // Paper colour swatches
+      var swatches = document.querySelectorAll('#paperColorGroup .swatch');
+      swatches.forEach(function(sw) {
+        sw.addEventListener('click', function() {
+          swatches.forEach(function(s) { s.classList.remove('active'); });
+          this.classList.add('active');
+          var hex = this.getAttribute('data-color');
+          if (typeof Preview3D !== 'undefined' && Preview3D.setPaperColor) Preview3D.setPaperColor(parseInt(hex.slice(1), 16));
+        });
+      });
+
+      // Grain on/off
+      var chkGrain = document.getElementById('chkGrain');
+      if (chkGrain) chkGrain.addEventListener('change', function() {
+        if (typeof Preview3D !== 'undefined' && Preview3D.setPaperGrain) Preview3D.setPaperGrain(this.checked);
+      });
+
+      // Light intensity
+      var lightSlider = document.getElementById('lightSlider');
+      if (lightSlider) lightSlider.addEventListener('input', function() {
+        if (typeof Preview3D !== 'undefined' && Preview3D.setLightIntensity) Preview3D.setLightIntensity(parseInt(this.value, 10) / 100);
+      });
+
+      // Background colour
+      var bgButtons = document.querySelectorAll('#bgColorGroup .bg-btn');
+      bgButtons.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          bgButtons.forEach(function(b) { b.classList.remove('active'); });
+          this.classList.add('active');
+          var bg = this.getAttribute('data-bg');
+          if (typeof Preview3D !== 'undefined' && Preview3D.setBackgroundColor) Preview3D.setBackgroundColor(bg);
+        });
+      });
+
+      // Fold step buttons (packmage 前进/后退): fold one assembly stage at a time
+      var btnFoldBack = document.getElementById('btnFoldBack');
+      var btnFoldFwd = document.getElementById('btnFoldFwd');
+      function foldStep(dir) {
+        foldStopPlay();
+        var n = (Preview3D && Preview3D._stageCount) || 1;
+        var cur = (Preview3D && Preview3D.foldProgress) || 0;
+        var next = Math.max(0, Math.min(1, cur + dir / n));
+        Preview3D.setFold(next);
+        if (foldSlider) foldSlider.value = Math.round(next * 100);
+      }
+      if (btnFoldFwd) btnFoldFwd.addEventListener('click', function() { foldStep(1); });
+      if (btnFoldBack) btnFoldBack.addEventListener('click', function() { foldStep(-1); });
 
       // Search
       var searchInput = document.getElementById('boxSearch');
