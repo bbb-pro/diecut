@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://057300.xyz/diecut/sitemap.xml
