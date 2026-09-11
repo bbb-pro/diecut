@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>刀模设计器 - 纸盒刀模库</title>
 <link rel="stylesheet" href="style.css">
 <meta name="description" content="免费在线纸盒刀模设计器，内置 1278 种盒型库，实时调整长宽高自动重算刀模展开图，支持导出 SVG / DXF / PDF，适用于包装结构设计与打样。">
@@ -20,7 +20,6 @@
 
 <header id="toolbar">
   <div class="toolbar-left">
-    <button id="btnMenu" class="menu-btn" title="菜单" aria-label="打开菜单">&#9776;</button>
     <span class="logo">&#9670;</span>
     <span class="app-title">刀模设计器</span>
     <span class="app-subtitle">完整纸盒刀模库</span>
@@ -64,13 +63,10 @@
 
 <main id="main">
 
-  <div id="panelBackdrop" class="panel-backdrop"></div>
-
   <aside id="paramPanel">
     <div class="panel-tabs">
       <button class="panel-tab active" data-tab="library">盒型库</button>
       <button class="panel-tab" data-tab="params">参数</button>
-      <button class="panel-tab" data-tab="threed">3D 预览</button>
     </div>
 
     <div id="tabLibrary" class="tab-content" style="display:block;">
@@ -108,26 +104,6 @@
         <input type="checkbox" id="chkLabels">
         <span>标签</span>
       </label>
-      <label class="toggle-label">
-        <input type="checkbox" id="chkPanels" checked>
-        <span>面板填充（可点选）</span>
-      </label>
-    </div>
-
-    <div class="panel-section" id="foldEditorSection">
-      <div class="panel-section-title">折叠调整（手动）</div>
-      <div class="fold-sel-status" id="foldSelInfo">未选中（在刀模图上点选面板或压痕线）</div>
-      <div class="fold-actions">
-        <button id="btnSetRoot" class="fold-btn" disabled>设为固定面</button>
-        <button id="btnFlipHinge" class="fold-btn" disabled>翻转该面折向</button>
-        <button id="btnCreaseHinge" class="fold-btn" disabled>线→铰链</button>
-        <button id="btnCreaseNofold" class="fold-btn" disabled>线→禁止折叠</button>
-        <button id="btnLinkHinge" class="fold-btn" disabled>两板连铰链</button>
-        <button id="btnFoldAngle" class="fold-btn" disabled>角度 180°/0°</button>
-        <button id="btnClearFoldOv" class="fold-btn fold-btn-warn">清除全部</button>
-      </div>
-      <div class="fold-ov-list" id="foldOvList"><div class="fold-ov-empty">无手动调整</div></div>
-      <div class="fold-ov-hint">调整保存在本机，切换 3D 预览查看效果；修改尺寸参数后自动失效。</div>
     </div>
 
     <div class="panel-section">
@@ -145,126 +121,12 @@
       <div id="boxInfo"></div>
     </div>
     </div>
-
-    <div id="tabThree" class="tab-content" style="display:none;">
-
-      <div class="panel-section">
-        <div class="panel-section-title">贴图</div>
-        <div class="art-upload-row">
-          <label class="art-file-label">
-            <input type="file" id="artUpload" accept="image/*" hidden>
-            <span>上传图片</span>
-          </label>
-          <button id="btnClearArt" class="art-clear-btn">清除贴图</button>
-        </div>
-        <div class="art-face-hint">选择要贴图的面，再上传图片：</div>
-        <div class="art-face-grid" id="artFaceGrid">
-          <button class="art-face-btn active" data-face="M0">正面</button>
-          <button class="art-face-btn" data-face="M5">背面</button>
-          <button class="art-face-btn" data-face="M1">左侧</button>
-          <button class="art-face-btn" data-face="M3">右侧</button>
-          <button class="art-face-btn" data-face="M2">顶面</button>
-          <button class="art-face-btn" data-face="M4">底面</button>
-        </div>
-        <div class="art-face-status" id="artFaceStatus">当前面：正面</div>
-      </div>
-
-      <div class="panel-section">
-        <div class="panel-section-title">视角</div>
-        <div class="rot-row">
-          <label>水平 <input type="range" id="rotateY" min="-180" max="180" value="-30"></label>
-        </div>
-        <div class="rot-row">
-          <label>垂直 <input type="range" id="rotateX" min="-90" max="90" value="-20"></label>
-        </div>
-      </div>
-
-      <div class="panel-section">
-        <div class="panel-section-title">显示模式</div>
-        <div class="seg-row" id="displayModeGroup">
-          <button class="seg-btn active" data-mode="color">彩样</button>
-          <button class="seg-btn" data-mode="white">白样</button>
-          <button class="seg-btn" data-mode="wire">骨架线</button>
-        </div>
-      </div>
-
-      <div class="panel-section">
-        <div class="panel-section-title">纸样底色</div>
-        <div class="paper-swatches" id="paperColorGroup">
-          <button class="swatch active" data-color="#f2ede2" title="牛皮纸" style="background:#f2ede2"></button>
-          <button class="swatch" data-color="#ffffff" title="白卡" style="background:#ffffff"></button>
-          <button class="swatch" data-color="#d9c9a3" title="米黄" style="background:#d9c9a3"></button>
-          <button class="swatch" data-color="#c9b28a" title="牛皮黄" style="background:#c9b28a"></button>
-          <button class="swatch" data-color="#e8e2d6" title="浅灰白" style="background:#e8e2d6"></button>
-          <button class="swatch" data-color="#b9c2c9" title="灰" style="background:#b9c2c9"></button>
-        </div>
-        <label class="toggle-label" style="margin-top:8px;">
-          <input type="checkbox" id="chkGrain" checked>
-          <span>纸纹</span>
-        </label>
-      </div>
-
-      <div class="panel-section">
-        <div class="panel-section-title">灯光 &amp; 背景</div>
-        <div class="rot-row">
-          <label>灯光 <input type="range" id="lightSlider" min="20" max="300" value="100"></label>
-        </div>
-        <div class="bg-row" id="bgColorGroup">
-          <button class="bg-btn" data-bg="default">渐变</button>
-          <button class="bg-btn" data-bg="#f7f6f3">白</button>
-          <button class="bg-btn" data-bg="#e6e7ea">浅灰</button>
-          <button class="bg-btn" data-bg="#2f3542">深灰</button>
-          <button class="bg-btn" data-bg="#0f1b2d">深蓝</button>
-        </div>
-      </div>
-
-      <div class="panel-section panel-info">
-        <div id="boxInfo3D">切换到「3D 预览」并选盒型后，此区域显示立体效果。</div>
-      </div>
-    </div>
   </aside>
 
   <section id="canvasArea">
-    <div id="viewSwitch">
-      <button id="btnView2D" class="view-btn active">刀模图</button>
-      <button id="btnView3D" class="view-btn">3D 预览</button>
-    </div>
     <div id="canvasContainer">
       <svg id="diecutSvg" xmlns="http://www.w3.org/2000/svg"></svg>
     </div>
-    <div id="preview3d" style="display:none;"></div>
-
-    <div id="previewToolbar" class="preview-toolbar" style="display:none;">
-      <div class="pt-group pt-fold-group">
-        <span class="pt-label">展开</span>
-        <input type="range" id="foldSlider" min="0" max="100" value="0" step="1" class="pt-fold">
-        <span class="pt-label">折叠</span>
-        <button id="btnFoldPlay" class="pt-btn pt-play" title="播放折叠动画">&#9654; 播放</button>
-      </div>
-      <div class="pt-sep"></div>
-      <div class="pt-group">
-        <button id="btnViewReset" class="pt-btn" title="重置视角">&#8635; 视角</button>
-        <button id="btnZoomOut3" class="pt-btn" title="缩小">&#8722;</button>
-        <button id="btnZoomIn3" class="pt-btn" title="放大">&#43;</button>
-      </div>
-      <div class="pt-sep"></div>
-      <div class="pt-group pt-view-presets" id="viewPresetGroup">
-        <button class="pt-btn pt-preset" data-preset="unfold" title="展开 - 俯视展开图">展开</button>
-        <button class="pt-btn pt-preset" data-preset="front" title="正面">正面</button>
-        <button class="pt-btn pt-preset" data-preset="left" title="左面">左面</button>
-        <button class="pt-btn pt-preset" data-preset="back" title="背面">背面</button>
-        <button class="pt-btn pt-preset" data-preset="right" title="右面">右面</button>
-        <button class="pt-btn pt-preset" data-preset="top" title="顶部">顶部</button>
-        <button class="pt-btn pt-preset" data-preset="bottom" title="底部">底部</button>
-      </div>
-      <div class="pt-sep"></div>
-      <div class="pt-group">
-        <button id="btnFoldBack" class="pt-btn" title="上一步折叠">&#8592; 上一步</button>
-        <button id="btnFoldFwd" class="pt-btn" title="下一步折叠">下一步 &#8594;</button>
-      </div>
-      <div class="pt-hint">拖拽旋转 &middot; 滚轮缩放 &middot; 拖动滑块看折叠</div>
-    </div>
-
     <div id="canvasOverlay">
       <div class="overlay-info" id="overlayInfo"></div>
       <div class="overlay-hint">滚轮缩放 &#183; 拖拽平移 &#183; 双击适应</div>
@@ -282,8 +144,6 @@
 <script src="packmage_boxtypes.js"></script>
 <script src="renderer.js"></script>
 <script src="exporter.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-<script src="preview3d.js?v=43"></script>
 <script src="app.js"></script>
 </body>
 </html>

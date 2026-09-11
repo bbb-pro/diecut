@@ -19,18 +19,8 @@ body {
   color: var(--text);
   background: var(--bg);
   overflow: hidden;
-  height: 100vh;          /* fallback for browsers without dvh */
-  height: 100dvh;         /* dynamic viewport height: excludes mobile browser chrome */
+  height: 100vh;
   user-select: none;
-  -webkit-text-size-adjust: 100%;
-}
-
-/* Touch: dragging the 3D model / die-cut must rotate-zoom, not scroll or pinch
-   the page. Buttons use `manipulation` to drop the 300ms tap delay + double-tap zoom. */
-#diecutSvg, #preview3d, #canvasContainer, #preview3d canvas { touch-action: none; }
-#toolbar button, .view-btn, .pt-btn, .menu-btn, .panel-tab,
-.zoom-btn, .art-face-btn, .art-clear-btn, .art-file-label, .box-current-preview {
-  touch-action: manipulation;
 }
 
 /* ===== Toolbar ===== */
@@ -38,11 +28,9 @@ body {
   display: flex;
   align-items: center;
   height: 48px;
-  height: calc(48px + env(safe-area-inset-top, 0px));
-  padding: 0 12px;
-  padding-top: env(safe-area-inset-top, 0px);
   background: var(--panel-bg);
   border-bottom: 1px solid var(--border);
+  padding: 0 12px;
   gap: 8px;
   z-index: 100;
 }
@@ -104,7 +92,6 @@ body {
 #main {
   display: flex;
   height: calc(100vh - 48px);
-  height: calc(100dvh - 48px);
 }
 
 /* ===== Parameter Panel ===== */
@@ -262,7 +249,7 @@ body {
 }
 #canvasContainer {
   width: 100%;
-  height: calc(100% - 52px);
+  height: 100%;
   cursor: grab;
 }
 #canvasContainer.dragging { cursor: grabbing; }
@@ -299,45 +286,6 @@ body {
 .grid-line-major { stroke: #e0e0e0; stroke-width: 0.3; }
 .cut-line { stroke: var(--cut-line); stroke-width: 0.6; fill: none; }
 .crease-line { stroke: var(--crease-line); stroke-width: 0.4; fill: none; stroke-dasharray: 2 1; }
-/* Manual fold editor: clickable panel fills. Kept very faint so the dieline
-   stays readable; the fill is what makes the panel clickable in SVG. */
-.panel-shape { fill: #2d7ad6; fill-opacity: 0.06; stroke: #2d7ad6; stroke-opacity: 0.22; stroke-width: 0.3; cursor: pointer; }
-.panel-shape:hover { fill-opacity: 0.17; }
-/* Visually merged boards ("只显示不合并"): a board split only by creases is drawn
-   as one piece — no internal stroke so it doesn't read as cut into panels. */
-.panel-shape.panel-merged { stroke: none; }
-.panel-shape.panel-selected { fill: #e07a2d; fill-opacity: 0.22; stroke: #e07a2d; stroke-opacity: 0.75; stroke-width: 0.6; }
-/* Override marks: user-pinned root = green, direction-flipped = amber */
-.panel-shape.panel-root { fill: #2f9e5f; fill-opacity: 0.2; stroke: #2f9e5f; stroke-opacity: 0.8; stroke-width: 0.6; }
-.panel-shape.panel-flip { fill: #d6a52d; fill-opacity: 0.16; stroke: #d6a52d; stroke-opacity: 0.7; stroke-width: 0.5; }
-/* Clickable crease (hinge picking) */
-.crease-line { cursor: pointer; }
-.crease-line:hover { stroke-width: 0.8; stroke: #185fa5; }
-.crease-line.crease-selected { stroke: #e07a2d; stroke-width: 0.9; stroke-dasharray: none; }
-
-/* ===== Fold editor sidebar section ===== */
-.fold-sel-status { font-size: 11px; color: var(--text-muted); margin: 6px 0 8px; }
-.fold-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.fold-btn {
-  font-size: 11px; padding: 4px 10px; border: 1px solid var(--border);
-  background: var(--panel-bg); border-radius: 6px; cursor: pointer; color: var(--text);
-}
-.fold-btn:hover:not(:disabled) { border-color: #2d7ad6; color: #2d7ad6; }
-.fold-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-.fold-btn-warn:hover:not(:disabled) { border-color: #e53e3e; color: #e53e3e; }
-.fold-ov-list { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
-.fold-ov-item {
-  display: flex; justify-content: space-between; align-items: center;
-  font-size: 11px; padding: 3px 6px; border-radius: 4px;
-  background: var(--panel-bg); border: 1px solid var(--border);
-}
-.fold-ov-del {
-  border: none; background: none; color: #999; cursor: pointer;
-  font-size: 13px; line-height: 1; padding: 0 2px;
-}
-.fold-ov-del:hover { color: #e53e3e; }
-.fold-ov-empty { font-size: 11px; color: var(--text-muted); font-style: italic; }
-.fold-ov-hint { font-size: 10px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
 .dim-line { stroke: var(--dim-line); stroke-width: 0.2; fill: none; }
 .dim-text { font-size: 3px; fill: var(--dim-line); text-anchor: middle; font-family: "SF Mono", Consolas, monospace; }
 .dim-tick { stroke: var(--dim-line); stroke-width: 0.2; fill: none; }
@@ -387,11 +335,6 @@ body {
   border-bottom: 1px solid var(--border);
   background: var(--bg);
   flex-shrink: 0;
-  /* Lock the 盒型库 / 参数 / 3D 标题栏 to the top of the scrolling panel so it
-     stays visible while the library / params / 3D content scrolls underneath. */
-  position: sticky;
-  top: 0;
-  z-index: 20;
 }
 .panel-tab {
   flex: 1;
@@ -676,370 +619,4 @@ body {
   font-weight: 700;
   letter-spacing: 0.3px;
   margin-right: 6px;
-}
-
-/* ===== View switch (2D / 3D) ===== */
-#viewSwitch {
-  display: flex;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid #ececec;
-  background: #fafafa;
-}
-.view-btn {
-  flex: 1;
-  padding: 7px 10px;
-  border: 1px solid #d8d8d8;
-  background: #fff;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  color: #333;
-  transition: all .15s;
-}
-.view-btn:hover { border-color: #3182ce; }
-.view-btn.active {
-  background: #3182ce;
-  color: #fff;
-  border-color: #3182ce;
-}
-
-#preview3d {
-  position: relative;
-  width: 100%;
-  height: calc(100% - 52px);
-  background: #f0f0f0;
-  overflow: hidden;
-}
-
-/* ===== Artwork (贴图) ===== */
-.art-upload-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-.art-file-label {
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 10px;
-  border: 1px dashed #3182ce;
-  border-radius: 6px;
-  background: #ebf4ff;
-  color: #3182ce;
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-}
-.art-file-label:hover { background: #dbeafe; }
-.art-clear-btn {
-  padding: 8px 12px;
-  border: 1px solid #d8d8d8;
-  background: #fff;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  color: #666;
-}
-.art-clear-btn:hover { border-color: #e53e3e; color: #e53e3e; }
-.art-face-hint {
-  font-size: 12px;
-  color: #888;
-  margin-bottom: 6px;
-}
-.art-face-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-}
-.art-face-btn {
-  padding: 8px 4px;
-  border: 1px solid #d8d8d8;
-  background: #fff;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  color: #444;
-}
-.art-face-btn:hover { border-color: #3182ce; }
-.art-face-btn.active {
-  background: #3182ce;
-  color: #fff;
-  border-color: #3182ce;
-}
-.art-face-status {
-  margin-top: 8px;
-  font-size: 12px;
-  color: #888;
-}
-
-/* ===== Fold + rotation controls ===== */
-.fold-row, .rot-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-.fold-row input[type="range"], .rot-row input[type="range"] {
-  flex: 1;
-}
-.rot-row label {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: #666;
-}
-.fold-play-btn {
-  padding: 7px 12px;
-  border: 1px solid #3182ce;
-  background: #3182ce;
-  color: #fff;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-  white-space: nowrap;
-}
-.fold-play-btn:hover { background: #2563eb; }
-.fold-hint {
-  font-size: 12px;
-  color: #888;
-}
-
-/* ===== 3D 悬浮控制条（参考 packmage 3D 视图） ===== */
-.preview-toolbar {
-  position: absolute;
-  left: 50%;
-  bottom: 18px;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 10px 16px;
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  box-shadow: 0 6px 22px rgba(15, 23, 42, 0.14);
-  z-index: 20;
-  backdrop-filter: blur(4px);
-  max-width: calc(100% - 32px);
-  flex-wrap: wrap;
-  justify-content: center;
-}
-.pt-group { display: flex; align-items: center; gap: 10px; }
-.pt-fold-group { gap: 8px; }
-.pt-sep { width: 1px; height: 26px; background: #e2e8f0; }
-.pt-label { font-size: 12px; color: #64748b; white-space: nowrap; }
-.pt-fold {
-  width: 200px;
-  max-width: 38vw;
-  accent-color: #3182ce;
-  cursor: pointer;
-}
-.pt-btn {
-  padding: 7px 12px;
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  color: #334155;
-  border-radius: 7px;
-  cursor: pointer;
-  font-size: 13px;
-  white-space: nowrap;
-  transition: background .15s, border-color .15s;
-}
-.pt-btn:hover { background: #f1f5f9; border-color: #94a3b8; }
-.pt-btn:active { background: #e2e8f0; }
-.pt-play {
-  border-color: #3182ce;
-  background: #3182ce;
-  color: #fff;
-  font-weight: 600;
-}
-.pt-play:hover { background: #2563eb; border-color: #2563eb; }
-.pt-btn.pt-playing {
-  background: #dc2626;
-  border-color: #dc2626;
-  color: #fff;
-  font-weight: 600;
-}
-.pt-btn.pt-playing:hover { background: #b91c1c; border-color: #b91c1c; }
-.pt-hint {
-  flex-basis: 100%;
-  text-align: center;
-  font-size: 11px;
-  color: #94a3b8;
-  margin-top: 2px;
-}
-
-/* View presets (packmage-style) */
-.pt-view-presets { gap: 6px; flex-wrap: wrap; justify-content: center; }
-.pt-btn.pt-preset { padding: 5px 10px; font-size: 12px; }
-.pt-btn.pt-preset.pt-active {
-  background: #3182ce;
-  border-color: #3182ce;
-  color: #fff;
-  font-weight: 600;
-}
-
-/* 3D 侧边栏：显示模式 / 纸样底色 / 灯光 / 背景 */
-.seg-row { display: flex; gap: 8px; }
-.seg-btn {
-  flex: 1;
-  padding: 7px 0;
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  color: #334155;
-  border-radius: 7px;
-  cursor: pointer;
-  font-size: 13px;
-  transition: background .15s, border-color .15s, color .15s;
-}
-.seg-btn:hover { background: #f1f5f9; border-color: #94a3b8; }
-.seg-btn.active {
-  background: #3182ce;
-  border-color: #3182ce;
-  color: #fff;
-  font-weight: 600;
-}
-.paper-swatches { display: flex; gap: 8px; flex-wrap: wrap; }
-.swatch {
-  width: 30px; height: 30px;
-  border: 2px solid #e2e8f0;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: border-color .15s, transform .1s;
-}
-.swatch:hover { transform: scale(1.1); }
-.swatch.active { border-color: #3182ce; box-shadow: 0 0 0 2px rgba(49,130,206,0.25); }
-.bg-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-.bg-btn {
-  padding: 5px 10px;
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  color: #334155;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 12px;
-  transition: background .15s, border-color .15s;
-}
-.bg-btn:hover { background: #f1f5f9; }
-.bg-btn.active { background: #3182ce; border-color: #3182ce; color: #fff; }
-
-/* 3D 标签页：贴图卡片更紧凑 */
-#tabThree .panel-section { margin-bottom: 14px; }
-
-/* ===== Mobile menu button (hidden on desktop) ===== */
-.menu-btn {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border: 1px solid var(--border);
-  background: var(--panel-bg);
-  border-radius: 6px;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  color: var(--text);
-}
-.menu-btn:hover { border-color: var(--accent); color: var(--accent); }
-
-/* Backdrop behind the slide-in panel on mobile */
-.panel-backdrop {
-  display: none;
-  position: fixed;
-  top: 48px; left: 0; right: 0; bottom: 0;
-  background: rgba(15, 23, 42, 0.35);
-  z-index: 150;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-.panel-backdrop.show { display: block; opacity: 1; }
-
-/* ===== Responsive: phones / narrow tablets ===== */
-@media (max-width: 820px) {
-  body { font-size: 14px; }
-
-  /* Show the hamburger, tighten the toolbar */
-  .menu-btn { display: inline-flex; }
-  .app-subtitle { display: none; }
-  .toolbar-right button span { display: none; }   /* icon-only export buttons */
-  .toolbar-right button { padding: 6px 9px; }
-  .toolbar-divider { display: none; }
-  #boxTypeSelect { min-width: 120px; max-width: 46vw; }
-  .toggle-label span { font-size: 11px; }
-  #paperThickness { padding: 3px 4px; font-size: 10px; }
-
-  /* Left panel becomes a slide-in drawer */
-  #main {
-    display: block;
-    height: calc(100dvh - 48px - env(safe-area-inset-top, 0px));
-    position: relative;
-  }
-  #paramPanel {
-    position: fixed;
-    top: calc(48px + env(safe-area-inset-top, 0px));
-    left: 0;
-    bottom: 0;
-    width: 84%;
-    max-width: 320px;
-    z-index: 200;
-    transform: translateX(-100%);
-    transition: transform 0.25s ease;
-    box-shadow: 4px 0 24px rgba(15, 23, 42, 0.18);
-  }
-  #paramPanel.open { transform: translateX(0); }
-
-  /* Canvas fills the whole area */
-  #canvasArea { width: 100%; height: 100%; }
-  #canvasContainer { height: calc(100% - 52px); }
-
-  /* Floating 3D toolbar adapts to small screens */
-  .preview-toolbar {
-    left: 8px;
-    right: 8px;
-    transform: none;
-    bottom: 12px;
-    gap: 8px;
-    padding: 8px 10px;
-    flex-wrap: wrap;
-  }
-  .pt-fold { width: 42vw; max-width: 200px; height: 22px; }
-  .pt-fold::-webkit-slider-thumb { width: 20px; height: 20px; }
-  .pt-btn { padding: 9px 12px; font-size: 13px; }
-  .pt-hint { display: none; }
-  .pt-sep { display: none; }
-
-  /* Touch-friendly ranges everywhere */
-  input[type="range"] { height: 22px; }
-  input[type="range"]::-webkit-slider-thumb { width: 18px; height: 18px; }
-}
-
-@media (max-width: 480px) {
-  .app-title { font-size: 13px; }
-  #boxTypeSelect { font-size: 12px; }
-  .toolbar-right { gap: 4px; }
-  .view-btn { font-size: 12px; padding: 8px 6px; }
-  #viewSwitch { padding: 6px 8px; gap: 6px; }
-
-  /* 3D controls become a clean bottom sheet, never covering the model */
-  .preview-toolbar {
-    left: 0; right: 0; bottom: 0;
-    transform: none;
-    border-radius: 14px 14px 0 0;
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
-    gap: 10px;
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .pt-group { justify-content: center; gap: 8px; flex-wrap: wrap; }
-  .pt-fold-group { flex-wrap: wrap; }
-  .pt-fold { width: 100%; max-width: none; height: 24px; }
-  .pt-fold::-webkit-slider-thumb { width: 22px; height: 22px; }
-  .pt-btn { padding: 10px 14px; font-size: 13px; }
-  .pt-hint { display: none; }
-  .pt-sep { display: none; }
 }
