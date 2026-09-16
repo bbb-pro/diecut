@@ -1,0 +1,103 @@
+name: Sync box library
+
+# 每月 1 日 03:00 UTC（北京时间 11:00）自动同步 packmage 盒型库
+# 也可以在 Actions 页面点 “Run workflow” 手动跑一次
+on:
+  schedule:
+    - cron: '0 3 1 * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '几何全量重下（慢，约 1294 次请求）'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # 需要 push 同步产物
+  pages: write      # 需要部署 Pages
+  id-token: write
+
+concurrency:
+  group: sync-boxlib
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # 先确认 runner 能连上 packmage（上游在国内，海外 runner 不一定通）
+      - name: 预检 · 上游连通性
+        run: |
+          echo "### 上游连通性预检" >> "$GITHUB_STEP_SUMMARY"
+          set -o pipefail
+          out=$(curl -sS -m 30 -o /tmp/boxlib.min.js \
+            -w '%{http_code} %{size_download} %{time_total}s' \
+            https://online.packmage.cn/diy/worktable/boxlib_zh.min.js)
+          echo "boxlib_zh.min.js → $out" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$(echo "$out" | cut -d' ' -f1)" = "200" ]
+          [ "$(stat -c%s /tmp/boxlib.min.js)" -gt 10000 ]
+
+      - name: 同步盒型库
+        run: |
+          if [ "${{ inputs.force }}" = "true" ]; then
+            node sync_boxlib.js --force
+          else
+            node sync_boxlib.js
+          fi
+
+      - name: 提交并推送
+        id: commit
+        run: |
+          set -euo pipefail
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          # 只暂存同步产物，避免把临时文件 / 备份目录带进仓库
+          git add -- packmage_data.js packmage_boxlib_zh.js data box sitemap.xml robots.txt
+
+          if git diff --cached --quiet; then
+            echo "无变化，跳过提交" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          MSG=$(node -e '
+            const r = require("./_sync_report.json");
+            const bits = ["清单 " + r.catalog + " 个盒型"];
+            if (r.added && r.added.length)     bits.push("新增 " + r.added.length + "：" + r.added.join(" "));
+            if (r.removed && r.removed.length) bits.push("消失 " + r.removed.length + "：" + r.removed.join(" "));
+            if (r.failed && r.failed.length)   bits.push("抓取失败 " + r.failed.length);
+            console.log("chore(sync): 同步 packmage 盒型库\n\n" + bits.join("\n"));
+          ')
+          git commit -q -m "$MSG"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### 同步结果"
+            echo '```'
+            git show --stat --oneline HEAD | head -40
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # GITHUB_TOKEN 推的 commit 不会再触发 deploy.yml，所以这里直接部署 Pages
+      - uses: actions/configure-pages@v5
+        if: steps.commit.outputs.changed == 'true'
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.commit.outputs.changed == 'true'
+        with:
+          path: '.'
+      - id: deploy
+        if: steps.commit.outputs.changed == 'true'
+        uses: actions/deploy-pages@v4

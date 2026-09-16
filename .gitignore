@@ -34,3 +34,7 @@ test_*.png
 _*.js
 _*.png
 _*.txt
+_*.json
+
+# 本地备份目录（绝不入库；同步工作流的 git add 也因此不会误带）
+_backup_*/

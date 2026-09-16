@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-抓取 packmage 官方盒型立体缩略图到 v2/data/thumbs/
+抓取 packmage 官方盒型立体缩略图到 data/thumbs/
 
 上游接口：https://online.packmage.cn/Content/boximg/{id}-M.png
   - 只有 M 这一档（-S / -L / -B / -XL 都是 404，别再试）
@@ -10,12 +10,15 @@
     前端 `.hvp-iso .hvp-thumb` 用 max-width/max-height + object-fit:contain 适配任意比例，
     所以脚本对尺寸不挑剔，只要是合法 PNG 就收。
 
-用法：
-    python v2/tools/fetch_thumbs.py            # 只补缺失的（默认）
-    python v2/tools/fetch_thumbs.py --force    # 全部重下
-    python v2/tools/fetch_thumbs.py --check    # 只体检，不联网
+依赖 data/catalog.js（由 build_v2.js 生成）取盒型清单，所以要在编译之后再跑。
 
-退出码：0 全部就位；1 有缺失/损坏
+用法（仓库根目录执行）：
+    python tools/fetch_thumbs.py                 # 只补缺失的（默认）
+    python tools/fetch_thumbs.py --force         # 全部重下
+    python tools/fetch_thumbs.py --check         # 只体检，不联网
+    python tools/fetch_thumbs.py --allow-missing # 有失败也返回 0（定时同步用；前端还有回源+矢量两级兜底）
+
+退出码：0 全部就位；1 有缺失/损坏（--allow-missing 时降级为 0）
 """
 import os, sys, json, time, struct, argparse
 import urllib.request, urllib.error
@@ -99,6 +102,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--force', action='store_true', help='全部重下（忽略本地已有）')
     ap.add_argument('--check', action='store_true', help='只体检，不联网')
+    ap.add_argument('--allow-missing', action='store_true',
+                    help='有失败/缺失也返回 0（定时同步用，避免个别 404 拖垮整条链路）')
     args = ap.parse_args()
 
     os.makedirs(THUMBS, exist_ok=True)
@@ -119,7 +124,7 @@ def main():
                   % (NORM_W, NORM_H, len(odd), odd[:20]))
         if bad:
             print('❗ 缺失或损坏 %d 个: %s' % (len(bad), bad[:20]))
-            return 1
+            return 0 if args.allow_missing else 1
         return 0
 
     ok = skip = 0
@@ -148,7 +153,7 @@ def main():
         from collections import Counter
         print('失败分布: %s' % dict(Counter(bad.values())))
         print('失败清单: %s' % list(bad.items())[:30])
-        return 1
+        return 0 if args.allow_missing else 1
     print('全部就位 ✓ 前端从 data/thumbs/ 直接取图')
     return 0
 

@@ -1,69 +1,165 @@
+#!/usr/bin/env node
 /*
- * download_all_boxes.js — Batch download all 1279 box geometries from packmage.cn
+ * download_all_boxes.js — 从 packmage 同步盒型库（清单 + 几何）
  *
- * Usage: node download_all_boxes.js
- * Output: packmage_all_boxes.json
+ * 用法：
+ *   node download_all_boxes.js                 # 增量：沿用本地清单，只补缺几何
+ *   node download_all_boxes.js --refresh-lib   # 先从上游刷新清单，再增量补几何【定时任务用这个】
+ *   node download_all_boxes.js --force         # 全部重下几何（~1294 次请求，慢）
+ *   node download_all_boxes.js --dry-run       # 只报告差异，不写任何文件
+ *   node download_all_boxes.js --strict        # 有盒型抓取失败时返回非 0（默认只告警）
+ *
+ * 数据来源（两个端点都匿名开放，无需登录）：
+ *   清单  GET   https://online.packmage.cn/diy/worktable/boxlib_zh.min.js
+ *               → `var boxTree = {cates, restBoxes}`；restBoxes 每行 = [id, ?, 分类位掩码, 0, 0, 0, tags]
+ *   几何  POST  https://online.packmage.cn/Online/GetBoxData  {boxID, inPms:''}
+ *
+ * 输出（--dry-run 时全部跳过）：
+ *   packmage_boxlib_zh.js    清单快照（--refresh-lib 时覆盖）
+ *   packmage_data.js         {categories, catalog, boxes} —— 下游 build_v2.js / build_box_pages.js 的唯一输入
+ *   _sync_report.json        本次同步摘要（供 sync_boxlib.js / CI 生成提交信息）
+ *
+ * 说明：
+ *   - catalog 是「权威清单」，每次都由上游 restBoxes 重建（1279 → 1294 这类新增会自己冒出来）
+ *   - boxes 只增不减：不在新 catalog 里的盒型会被剔除（上游删掉的盒型同步消失）
+ *   - 不再写 packmage_all_boxes.json —— 它只是 packmage_data.js 的重复副本，仓库里没人读
  */
+
+'use strict';
 
 const https = require('https');
 const fs = require('fs');
+const path = require('path');
 const querystring = require('querystring');
-
-const HOST = 'online.packmage.cn';
-const PATH = '/Online/GetBoxData';
-
-// Load existing data to get the catalog
-global.window = global;
 const vm = require('vm');
-const code = fs.readFileSync(__dirname + '/packmage_data.js', 'utf8');
-vm.runInThisContext(code);
 
-const catalog = PackmageData.catalog;
-const existingBoxes = PackmageData.boxes;
-console.log('Catalog:', catalog.length, 'boxes');
-console.log('Already downloaded:', Object.keys(existingBoxes).length, 'boxes');
+const ROOT = __dirname;
+const HOST = 'online.packmage.cn';
+const API_PATH = '/Online/GetBoxData';
+const LIB_PATH = '/diy/worktable/boxlib_zh.min.js';
+const LIB_URL = 'https://' + HOST + LIB_PATH;
+
+const BATCH_SIZE = 10;      // 并发请求数（上游无鉴权无限流，实测 12 路 102ms 全通）
+const TIMEOUT = 20000;
+
+const argv = process.argv.slice(2);
+const REFRESH_LIB = argv.includes('--refresh-lib');
+const FORCE = argv.includes('--force');
+const DRY = argv.includes('--dry-run');
+const STRICT = argv.includes('--strict');
+
+/* ================= 基础工具 ================= */
+
+const log = (...a) => console.log(...a);
+
+function download(url, redirects) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const req = https.get({
+      hostname: u.hostname,
+      path: u.pathname + u.search,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; diecut-sync/1.0)',
+        'Referer': 'https://online.packmage.cn/online/boxes',
+      },
+    }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && (redirects || 0) < 5) {
+        res.resume();
+        const next = new URL(res.headers.location, url).toString();
+        resolve(download(next, (redirects || 0) + 1));
+        return;
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        reject(new Error('HTTP ' + res.statusCode + ' @ ' + url));
+        return;
+      }
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+    });
+    req.on('error', reject);
+    req.setTimeout(TIMEOUT, () => { req.destroy(new Error('timeout')); });
+  });
+}
+
+/** 从 boxlib JS 文本里抽 {cates, rest}；用 vm 执行，不依赖正则 */
+function parseLib(src) {
+  const ctx = { boxTree: null, restBoxes: null };
+  vm.createContext(ctx);
+  vm.runInContext(src, ctx, { timeout: 10000 });
+  const cates = (ctx.boxTree && ctx.boxTree.cates) || [];
+  const rest = ctx.restBoxes || [];
+  if (!cates.length || !rest.length) throw new Error('boxlib 解析失败：cates 或 restBoxes 为空');
+  return { cates, rest };
+}
+
+function loadLocalData() {
+  const p = path.join(ROOT, 'packmage_data.js');
+  if (!fs.existsSync(p)) return null;
+  const ctx = {};
+  vm.createContext(ctx);
+  vm.runInContext(fs.readFileSync(p, 'utf8'), ctx, { timeout: 30000 });
+  return ctx.PackmageData || null;
+}
+
+/** catalog = restBoxes 的一比一映射（已核验：1279 条逐字段相同） */
+function buildCatalog(rest) {
+  return rest.map((row) => ({
+    id: String(row[0]),
+    tid: row[2] || 0,
+    tags: String(row[6] || ''),
+  }));
+}
+
+/** 分类表：Idx 0 官方叫「免费」，站点上叫「常用」，保持既有口径 */
+function buildCategories(cates) {
+  return cates.map((c) => ({
+    tid: c.TID,
+    name: c.Idx === 0 ? '常用' : c.Name,
+    idx: c.Idx,
+  }));
+}
+
+/* ================= 几何抓取 ================= */
 
 function fetchBox(boxID) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const postData = querystring.stringify({
       boxID: boxID,
-      inPms: '', // empty = use defaults
+      inPms: '', // 空 = 用上游默认参数
       getBox3D: 'false',
       getFullPmsDesc: 'true',
       getRemark: 'false',
-      tran: '0'
+      tran: '0',
     });
 
-    const options = {
+    const req = https.request({
       hostname: HOST,
-      path: PATH,
+      path: API_PATH,
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Content-Length': Buffer.byteLength(postData),
         'Referer': 'https://online.packmage.cn/Online/Design/' + boxID,
         'Origin': 'https://online.packmage.cn',
-      }
-    };
-
-    const req = https.request(options, (res) => {
+        'User-Agent': 'Mozilla/5.0 (compatible; diecut-sync/1.0)',
+      },
+    }, (res) => {
       let data = '';
-      res.on('data', (chunk) => data += chunk);
+      res.on('data', (c) => data += c);
       res.on('end', () => {
         try {
           const json = JSON.parse(data);
-          if (!json.success) {
-            resolve(null);
-            return;
-          }
+          /* success:false = 上游明确表示「这个盒型没有数据」（如 Q002，清单里有但几何为空）。
+             这不是网络故障，不该算抓取失败，也不该重试 —— 用哨兵值区分。 */
+          if (!json.success) return resolve({ __rejected: true });
           const inner = typeof json.Data === 'string' ? JSON.parse(json.Data) : json.Data;
           const d = typeof inner.data === 'string' ? JSON.parse(inner.data) : inner.data;
           const cadData = typeof inner.cadData === 'string' ? JSON.parse(inner.cadData) : inner.cadData;
-
-          // Extract in the same format as existing data
           resolve({
-            tags: '', // will fill from catalog
-            tid: 0,   // will fill from catalog
+            tags: '',
+            tid: 0,
             cal: { min: cadData.CalMin || 1, max: cadData.CalMax || 3 },
             de: {
               w: d.de.Width,
@@ -73,100 +169,171 @@ function fetchBox(boxID) {
               p: d.de.P,
               sl: d.de.SolidLength,
               dl: d.de.DashLength,
-              op: d.de.OutPms
+              op: d.de.OutPms,
             },
             ce: d.ce,
             pm: cadData.PmItems || [],
-            fe: d.fe
+            fe: d.fe,
           });
         } catch (e) {
           resolve(null);
         }
       });
     });
-    req.on('error', (e) => resolve(null));
-    req.setTimeout(10000, () => { req.destroy(); resolve(null); });
+    req.on('error', () => resolve(null));
+    req.setTimeout(TIMEOUT, () => { req.destroy(); resolve(null); });
     req.write(postData);
     req.end();
   });
 }
 
-async function main() {
-  // Build a lookup from catalog for tags/tid
-  const catalogLookup = {};
-  catalog.forEach(c => { catalogLookup[c.id] = c; });
-
-  // Get all box IDs that we need to download
-  const allIds = catalog.map(c => c.id);
-  const existingIds = new Set(Object.keys(existingBoxes));
-  const needDownload = allIds.filter(id => !existingIds.has(id));
-
-  console.log('Need to download:', needDownload.length, 'new boxes');
-
-  // Start with existing boxes
-  const allBoxes = {};
-  Object.assign(allBoxes, existingBoxes);
-
-  // Fix existing boxes to have tags/tid from catalog
-  for (const id in allBoxes) {
-    if (catalogLookup[id]) {
-      allBoxes[id].tags = catalogLookup[id].tags || allBoxes[id].tags;
-      allBoxes[id].tid = catalogLookup[id].tid;
-    }
+/** 带重试的抓取（CI 网络抖动兜底） */
+async function fetchBoxRetry(id, attempts) {
+  for (let i = 0; i < (attempts || 3); i++) {
+    const b = await fetchBox(id);
+    if (b) return b;
+    await new Promise((r) => setTimeout(r, 500 * (i + 1)));
   }
-
-  // Download in batches of 10 concurrent requests
-  const BATCH_SIZE = 10;
-  let downloaded = 0;
-  let failed = 0;
-
-  for (let i = 0; i < needDownload.length; i += BATCH_SIZE) {
-    const batch = needDownload.slice(i, i + BATCH_SIZE);
-    const results = await Promise.all(batch.map(id => fetchBox(id)));
-
-    results.forEach((box, j) => {
-      const id = batch[j];
-      if (box) {
-        // Fill tags and tid from catalog
-        const cat = catalogLookup[id];
-        if (cat) {
-          box.tags = cat.tags || '';
-          box.tid = cat.tid;
-        }
-        allBoxes[id] = box;
-        downloaded++;
-      } else {
-        failed++;
-      }
-    });
-
-    process.stdout.write(`\rDownloaded: ${downloaded}/${needDownload.length} | Failed: ${failed} | Total: ${Object.keys(allBoxes).length}`);
-  }
-
-  console.log('\n');
-  console.log('Total boxes downloaded:', Object.keys(allBoxes).length);
-  console.log('Failed:', failed);
-
-  // Save to file
-  const output = {
-    categories: PackmageData.categories,
-    catalog: catalog,
-    boxes: allBoxes
-  };
-
-  const jsonStr = JSON.stringify(output);
-  fs.writeFileSync(__dirname + '/packmage_all_boxes.json', jsonStr);
-  console.log('Saved to packmage_all_boxes.json (' + (jsonStr.length / 1024 / 1024).toFixed(1) + ' MB)');
-
-  // Also generate the JS file
-  let jsContent = '// Packmage Box Library Data - ALL ' + Object.keys(allBoxes).length + ' boxes\n';
-  jsContent += '// Auto-generated from online.packmage.cn API\n\n';
-  jsContent += 'var PackmageData = ';
-  jsContent += jsonStr;
-  jsContent += ';\n';
-
-  fs.writeFileSync(__dirname + '/packmage_data.js', jsContent);
-  console.log('Updated packmage_data.js (' + (jsContent.length / 1024 / 1024).toFixed(1) + ' MB)');
+  return null;
 }
 
-main().catch(e => { console.error('Fatal error:', e); process.exit(1); });
+/* ================= 主流程 ================= */
+
+async function main() {
+  const t0 = Date.now();
+  const local = loadLocalData();
+  const localCatalog = (local && local.catalog) || [];
+  const localBoxes = (local && local.boxes) || {};
+  log('本地快照: catalog ' + localCatalog.length + ' 条 / 几何 ' + Object.keys(localBoxes).length + ' 个');
+
+  /* --- 1) 刷新清单 --- */
+  let libSrc = null;
+  if (REFRESH_LIB) {
+    log('拉取上游清单 ' + LIB_URL + ' …');
+    const buf = await download(LIB_URL);
+    libSrc = buf.toString('utf8');
+    log('  上游清单 ' + (buf.length / 1024).toFixed(0) + ' KB');
+    if (!DRY) fs.writeFileSync(path.join(ROOT, 'packmage_boxlib_zh.js'), buf);
+  } else {
+    libSrc = fs.readFileSync(path.join(ROOT, 'packmage_boxlib_zh.js'), 'utf8');
+    log('使用本地清单 packmage_boxlib_zh.js（加 --refresh-lib 才会从上游刷新）');
+  }
+
+  const { cates, rest } = parseLib(libSrc);
+  const catalog = buildCatalog(rest);
+  const categories = buildCategories(cates);
+  log('上游清单: cates ' + cates.length + ' 个 / 盒型 ' + catalog.length + ' 个');
+
+  /* --- 2) 差异 --- */
+  const newIds = new Set(catalog.map((c) => c.id));
+  const oldIds = new Set(localCatalog.map((c) => c.id));
+  const added = catalog.filter((c) => !oldIds.has(c.id)).map((c) => c.id);
+  const removed = localCatalog.filter((c) => !newIds.has(c.id)).map((c) => c.id);
+  const tagsChanged = catalog.filter((c) => {
+    const old = localCatalog.find((o) => o.id === c.id);
+    return old && (old.tags !== c.tags || old.tid !== c.tid);
+  }).map((c) => c.id);
+
+  log('清单差异: 新增 ' + added.length + ' / 消失 ' + removed.length + ' / 元数据变化 ' + tagsChanged.length);
+  if (added.length) log('  新增: ' + added.join(', '));
+  if (removed.length) log('  消失: ' + removed.join(', '));
+  if (tagsChanged.length) log('  元数据变化: ' + tagsChanged.slice(0, 20).join(', ') + (tagsChanged.length > 20 ? ' …' : ''));
+
+  const catalogLookup = {};
+  catalog.forEach((c) => { catalogLookup[c.id] = c; });
+
+  /* --- 3) 决定要抓哪些几何 --- */
+  // 只保留还在清单里的盒型 → 上游删掉的盒型同步消失
+  const allBoxes = {};
+  for (const id of Object.keys(localBoxes)) if (newIds.has(id)) allBoxes[id] = localBoxes[id];
+
+  const missing = catalog.map((c) => c.id).filter((id) => !allBoxes[id]);
+  const targets = FORCE ? catalog.map((c) => c.id) : missing;
+  log('需要抓取几何: ' + targets.length + ' 个' + (FORCE ? '（--force 全量重下）' : '（本地缺几何的盒型）'));
+
+  /* --- 4) 抓几何 --- */
+  let ok = 0;
+  let failed = [];
+  let rejected = [];
+  if (!DRY) {
+    for (let i = 0; i < targets.length; i += BATCH_SIZE) {
+      const batch = targets.slice(i, i + BATCH_SIZE);
+      const results = await Promise.all(batch.map((id) => fetchBoxRetry(id)));
+      results.forEach((box, j) => {
+        const id = batch[j];
+        if (!box) { failed.push(id); return; }
+        if (box.__rejected) { rejected.push(id); return; }   // 上游确认无几何
+        const cat = catalogLookup[id];
+        if (cat) { box.tags = cat.tags; box.tid = cat.tid; }
+        allBoxes[id] = box;
+        ok++;
+      });
+      process.stdout.write('\r  进度 ' + Math.min(i + BATCH_SIZE, targets.length) + '/' + targets.length
+        + ' | 成功 ' + ok + ' | 上游无数据 ' + rejected.length + ' | 失败 ' + failed.length);
+    }
+    if (targets.length) process.stdout.write('\n');
+
+    // 未重下的盒型也要把 tags/tid 对齐新清单
+    for (const id of Object.keys(allBoxes)) {
+      const cat = catalogLookup[id];
+      if (cat) { allBoxes[id].tags = cat.tags || allBoxes[id].tags; allBoxes[id].tid = cat.tid; }
+    }
+  } else {
+    log('（--dry-run：不抓取、不写文件）');
+  }
+
+  /* --- 5) 落盘 --- */
+  const geomIds = Object.keys(allBoxes);
+  const noGeom = catalog.filter((c) => !allBoxes[c.id]).map((c) => c.id);
+
+  const report = {
+    at: new Date().toISOString(),
+    libRefreshed: REFRESH_LIB,
+    force: FORCE,
+    catalog: catalog.length,
+    geometry: geomIds.length,
+    noGeometry: noGeom,
+    added: added,
+    removed: removed,
+    metaChanged: tagsChanged,
+    fetched: ok,
+    failed: failed,
+    rejected: rejected,
+    seconds: Math.round((Date.now() - t0) / 1000),
+  };
+
+  if (!DRY) {
+    const output = { categories: categories, catalog: catalog, boxes: allBoxes };
+    const jsonStr = JSON.stringify(output);
+    fs.writeFileSync(path.join(ROOT, 'packmage_data.js'),
+      '// Packmage Box Library Data - ' + geomIds.length + ' boxes\n' +
+      '// Auto-generated from online.packmage.cn API\n\n' +
+      'var PackmageData = ' + jsonStr + ';\n');
+    fs.writeFileSync(path.join(ROOT, '_sync_report.json'), JSON.stringify(report, null, 2) + '\n');
+    log('已写入 packmage_data.js (' + (jsonStr.length / 1048576).toFixed(1) + ' MB)');
+    log('已写入 _sync_report.json');
+  }
+
+  log('');
+  log('清单 ' + catalog.length + ' | 几何 ' + geomIds.length + ' | 新增 ' + added.length
+    + ' | 消失 ' + removed.length + ' | 抓取成功 ' + ok
+    + (rejected.length ? ' | 上游无数据 ' + rejected.length : '')
+    + (failed.length ? ' | 失败 ' + failed.length : '')
+    + ' | 耗时 ' + report.seconds + 's');
+  if (noGeom.length) log('ℹ 清单里有但无几何（上游未提供，站点显示占位）: ' + noGeom.join(', '));
+  if (failed.length) log('⚠ 抓取失败（下次同步自动重试）: ' + failed.join(', '));
+
+  /* --- 6) 退出码 --- */
+  // 已有清单里的盒型抓不到（如上游确实无几何的 Q002）不算致命；
+  // 但「本来该新增却一个都没成功」= 网络不通，必须让 CI 红掉。
+  if (!DRY && targets.length > 0 && ok === 0) {
+    console.error('❌ 需要抓取 ' + targets.length + ' 个盒型但一个都没成功，判定为上游不可达');
+    process.exit(1);
+  }
+  if (!DRY && failed.length > 0) {
+    console.error('⚠ 有 ' + failed.length + ' 个盒型抓取失败，已跳过（下次同步会自动重试）');
+    if (STRICT) process.exit(2);
+  }
+}
+
+main().catch((e) => { console.error('Fatal:', e.message); process.exit(1); });
