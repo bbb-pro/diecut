@@ -1,0 +1,713 @@
+/* ============================================================
+   detail.js — 详情页：参数面板 + 刀模展开图 + 内外制造尺寸对照
+   ============================================================ */
+(function () {
+  'use strict';
+
+  var V2 = window.V2;
+  var ID = V2.qs('id');
+  var C = null;
+  var B = null;   // catalog 元数据
+  var G = null;   // 几何 + 参数
+
+  var dimType = 'm';     // m 制造 / i 内 / o 外
+  var unit = 'mm';
+  var dims = { L: null, W: null, D: null };  // 统一以「制造尺寸 mm」存储
+  var ceLive = null;     // 当前生效的参数值
+  var S = null;          // 尺寸计算结果
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  if (!ID) {
+    document.body.innerHTML = '<div class="empty" style="padding:120px 20px"><b>缺少盒型编号</b>请从盒型库进入</div>';
+    return;
+  }
+
+  V2.loadCatalog().then(function (c) {
+    C = c;
+    B = c.boxes.filter(function (x) { return x.id === ID; })[0];
+    if (!B) {
+      document.body.innerHTML = '<div class="empty" style="padding:120px 20px"><b>未找到盒型 ' + V2.esc(ID) + '</b><a href="index.html">返回盒型库</a></div>';
+      return;
+    }
+    V2.bindTopSearch(c);
+    return V2.loadChunk(B.ch);
+  }).then(function () {
+    if (!B) return;
+    G = V2.geoOf(ID);
+    if (!G) return;
+    boot();
+  }).catch(function (e) {
+    var el = $('status');
+    if (el) { el.className = 'status err'; el.innerHTML = '<i class="dot"></i>' + V2.esc(e.message); }
+  });
+
+  /* ==================== 启动 ==================== */
+
+  function boot() {
+    document.title = V2.displayName(B) + '（' + ID + '）刀模展开图 · 内/制造/外尺寸对照与 SVG·DXF 下载 - 通用包装盒型库';
+
+    ceLive = Object.assign({}, G.ce);
+    dims.L = numOr(G.ce.l);
+    dims.W = numOr(G.ce.w);
+    dims.D = numOr(G.ce.d);
+    compute();
+
+    renderHead();
+    renderCanvas();
+    renderPanel();
+    renderInfo();
+    renderRelated();
+    renderTags();
+    bindExport();
+  }
+
+  function numOr(v) { var n = parseFloat(v); return isFinite(n) ? Math.round(n * 100) / 100 : null; }
+
+  function compute() {
+    S = V2.sizesOf(ceLive);
+    /* 补偿是单边量、尺寸跨两块纸板 → ×2：
+       内 = 制造 − 2×内向补偿，外 = 制造 + 2×外向补偿（外 − 内 = 2×纸板厚度） */
+    if (dims.L != null) S.L = { m: dims.L, i: r2(dims.L - 2 * S.inner), o: r2(dims.L + 2 * S.outer) };
+    if (dims.W != null) S.W = { m: dims.W, i: r2(dims.W - 2 * S.inner), o: r2(dims.W + 2 * S.outer) };
+    if (dims.D != null) S.D = { m: dims.D, i: r2(dims.D - 2 * S.inner), o: r2(dims.D + 2 * S.outer) };
+  }
+  function r2(v) { return Math.round(v * 100) / 100; }
+
+  /* ==================== 头部 ==================== */
+
+  /* 详情页不再单独占一行标题栏：原来那行「盒型名 + 编号」是重复信息
+     （编号在面包屑与右侧「刀模规格」里都有，盒型名在浏览器标签页标题里），
+     所以这里只管面包屑和属性栏里的编号 / 分类。 */
+  function renderHead() {
+    var cn = catName(B.cat);
+    var cc = $('crumbCat');
+    cc.textContent = cn;
+    cc.href = B.cat == null ? 'index.html' : 'index.html?cat=' + B.cat;
+    $('crumbNow').textContent = ID;
+    var kvId = $('kvId'), kvCat = $('kvCat');
+    if (kvId) kvId.textContent = ID;
+    if (kvCat) kvCat.textContent = cn;
+  }
+
+  /* 分类名规范化（第 0 类的「免费」→「常用盒型」）统一在 common.js 里做，列表页也用同一份 */
+  function catName(idx) { return V2.catName(C.cats, idx); }
+
+  /* ==================== 画布 ==================== */
+
+  var zoom = 1;
+  var showDim = true;            // 展开宽/展开高 尺寸线
+  var showMark = true;           // 长/宽/高 面板位置标注
+  var dimFs = null;              // 标注字号（用户单位），按渲染比例校正
+  var DIM_PX = 12;               // 标注目标渲染字号（px）
+  var canvasHost = null;         // .canvas（滚动视窗）
+  var fitPx = 0;                 // 100% 时 SVG 的像素宽度（按视窗等比贴合）
+
+  function host() {
+    if (!canvasHost) canvasHost = document.querySelector('.canvas');
+    return canvasHost;
+  }
+
+  /* 100% 时的贴合尺寸：宽高都装得下才算「适应」 */
+  function calcFit(vb) {
+    var h = host();
+    if (!h || !vb || !vb.width || !vb.height) return 0;
+    var pad = parseFloat(getComputedStyle($('canvasInner')).paddingLeft) || 0;
+    var availW = Math.max(80, h.clientWidth - pad * 2 - 2);
+    var availH = Math.max(80, h.clientHeight - pad * 2 - 2);
+    return Math.min(availW, availH * vb.width / vb.height);
+  }
+
+  function renderCanvas(pass) {
+    var svg = V2.svg(G, {
+      pad: 18,
+      dim: showDim,
+      marks: showMark,
+      dims: markDims(),
+      faces: markFaces(),
+      markOffset: markOffset(),
+      unit: unit,
+      fs: dimFs,
+      nameW: '展开宽',
+      nameH: '展开高'
+    });
+    $('canvasInner').innerHTML = svg;
+    applyZoom(true);
+
+    // 用「贴合时的真实比例」反推字号 —— 让所有盒型（大图/小图/狭长图）里标注大小一致，
+    // 且缩放时标注跟着图形一起放大，不会出现「图形放大了字还是 12px」的割裂感。
+    if ((showDim || showMark) && (pass || 0) < 2) {
+      var el = $('canvasInner').querySelector('svg');
+      var vb = el && el.viewBox && el.viewBox.baseVal;
+      var scale = vb && vb.width ? calcFit(vb) / vb.width : 0;
+      if (scale > 0) {
+        var want = Math.max(0.3, Math.min(200, DIM_PX / scale));
+        var cur = dimFs || V2.dimFontSize(G);
+        if (Math.abs(want - cur) / cur > 0.1) {
+          dimFs = want;
+          renderCanvas((pass || 0) + 1);
+          return;
+        }
+        dimFs = want;
+      }
+    }
+
+    var bb = V2.bboxSize(G);
+    $('footCut').textContent = G.c.length + ' 条';
+    $('footCrease').textContent = G.k.length + ' 条';
+    $('footBox').textContent = V2.num(bb.w) + ' × ' + V2.num(bb.h) + ' mm';
+
+    var fm = $('footMark');
+    if (fm) {
+      if (!showMark) fm.textContent = '已关闭';
+      else {
+        var f = markFaces();
+        var cover = {};
+        (f ? [].concat(f.x, f.y) : []).forEach(function (t) {
+          (t.ks || [t.k]).forEach(function (k) { cover[k] = 1; });
+        });
+        var hit = ['L', 'W', 'D'].filter(function (k) { return cover[k]; })
+          .map(function (k) { return V2.MARK_NAME[k]; });
+        var miss = ['L', 'W', 'D'].filter(function (k) { return !cover[k]; })
+          .map(function (k) { return V2.MARK_NAME[k]; });
+        fm.textContent = hit.length
+          ? hit.join('·') + (miss.length ? '（未识别 ' + miss.join('·') + '）' : ' 全部标出')
+          : '未识别';      }
+    }
+  }
+
+  /* 缩放：按像素设宽（不是百分比），并保持视窗中心不动 */
+  function applyZoom(keepCenter) {
+    var inner = $('canvasInner');
+    var el = inner.querySelector('svg');
+    var vb = el && el.viewBox && el.viewBox.baseVal;
+    if (!vb || !vb.width) return;
+
+    var h = host();
+    var cx = null, cy = null;
+    if (h && keepCenter) {
+      cx = (h.scrollLeft + h.clientWidth / 2) / Math.max(1, h.scrollWidth);
+      cy = (h.scrollTop + h.clientHeight / 2) / Math.max(1, h.scrollHeight);
+    }
+
+    fitPx = calcFit(vb);
+    el.style.width = Math.round(fitPx * zoom) + 'px';
+    el.style.height = 'auto';
+
+    if (h && keepCenter && cx != null) {
+      h.scrollLeft = cx * h.scrollWidth - h.clientWidth / 2;
+      h.scrollTop = cy * h.scrollHeight - h.clientHeight / 2;
+    }
+    $('zoomVal').textContent = Math.round(zoom * 100) + '%';
+  }
+
+  $('zoomIn').addEventListener('click', function () { zoom = Math.min(4, r1(zoom + 0.25)); applyZoom(true); });
+  $('zoomOut').addEventListener('click', function () { zoom = Math.max(0.25, r1(zoom - 0.25)); applyZoom(true); });
+  $('zoomFit').addEventListener('click', function () {
+    zoom = 1;
+    applyZoom(false);
+    var h = host();
+    if (h) { h.scrollLeft = 0; h.scrollTop = 0; }
+  });
+
+  function r1(v) { return Math.round(v * 100) / 100; }
+
+  /* Ctrl + 滚轮缩放（以光标位置为中心） */
+  (function () {
+    var h = host();
+    if (!h) return;
+    h.addEventListener('wheel', function (e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      var rect = h.getBoundingClientRect();
+      var rx = (h.scrollLeft + e.clientX - rect.left) / Math.max(1, h.scrollWidth);
+      var ry = (h.scrollTop + e.clientY - rect.top) / Math.max(1, h.scrollHeight);
+      var next = Math.max(0.25, Math.min(4, r1(zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15))));
+      if (next === zoom) return;
+      zoom = next;
+      applyZoom(false);
+      h.scrollLeft = rx * h.scrollWidth - (e.clientX - rect.left);
+      h.scrollTop = ry * h.scrollHeight - (e.clientY - rect.top);
+    }, { passive: false });
+  })();
+
+  var _rsT = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(_rsT);
+    _rsT = setTimeout(function () { applyZoom(true); }, 120);
+  });
+
+  var dimBtn = $('dimToggle');
+  if (dimBtn) {
+    dimBtn.addEventListener('click', function () {
+      showDim = !showDim;
+      dimBtn.classList.toggle('on', showDim);
+      renderCanvas();
+    });
+  }
+
+  var markBtn = $('markToggle');
+  if (markBtn) {
+    markBtn.addEventListener('click', function () {
+      showMark = !showMark;
+      markBtn.classList.toggle('on', showMark);
+      renderCanvas();
+    });
+  }
+
+  /* ---------------- 长/宽/高 面板定位（结果缓存，避免每次重绘都重扫几何） ---------------- */
+
+  var faceCache = null, faceKey = '';
+
+  /** 几何被替换后必须让定位缓存失效，否则标注会停在旧位置上 */
+  function invalidateFaces() { faceCache = null; faceKey = ''; }
+
+  function markDims() {
+    if (!S || !S.L || !S.W || !S.D) return null;
+    return { L: S.L.m, W: S.W.m, D: S.D.m };
+  }
+
+  function markFaces() {
+    if (!showMark || !G) return null;
+    var d = markDims();
+    if (!d) return null;
+    var key = d.L + '|' + d.W + '|' + d.D;
+    if (key !== faceKey) {
+      faceCache = V2.locateFaces(G, d);
+      faceKey = key;
+    }
+    return faceCache;
+  }
+
+  /** 图上标的是当前口径：内尺寸要减、外尺寸要加 */
+  function markOffset() {
+    if (!S) return 0;
+    return dimType === 'i' ? -2 * S.inner : dimType === 'o' ? 2 * S.outer : 0;
+  }
+
+  /* ==================== 参数面板 ==================== */
+
+  function renderPanel() {
+    // 尺寸类型
+    $('segType').addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      dimType = b.dataset.t;
+      syncSeg();
+      renderDims();
+      renderInfo();
+      renderCanvas();   // 标牌高亮当前口径
+    });
+    syncSeg();
+
+    // 单位
+    $('unitToggle').addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      unit = b.dataset.u;
+      syncUnit();
+      renderDims();
+      renderCanvas();   // 图上标注单位同步切换
+    });
+    syncUnit();
+
+    renderDims();
+
+    // 纸板厚度
+    var calRange = G.cal || { min: 0, max: 10 };
+    var calInput = $('calInput');
+    calInput.value = S.t;
+    calInput.min = calRange.min;
+    calInput.max = calRange.max;
+    $('calHint').textContent = '求解参数 CAL，可调 ' + calRange.min + '–' + calRange.max + ' mm';
+    calInput.addEventListener('input', function () {
+      var v = parseFloat(calInput.value);
+      if (!isFinite(v)) return;
+      ceLive.cal = v;
+      compute();
+      renderInfo();
+    });
+    $('btnCalReset').addEventListener('click', function () {
+      calInput.value = S.t = r2((+ceLive.inner || 0) + (+ceLive.outer || 0));
+      ceLive.cal = calInput.value;
+      compute();
+      renderInfo();
+    });
+
+    renderOtherParams();
+    $('btnReset').addEventListener('click', resetAll);
+    $('btnApply').addEventListener('click', function () { recompute(true); });
+  }
+
+  function syncSeg() {
+    document.querySelectorAll('#segType button').forEach(function (b) {
+      b.classList.toggle('on', b.dataset.t === dimType);
+    });
+    $('typeHint').textContent = dimType === 'm' ? '当前：制造尺寸'
+      : dimType === 'i' ? '当前：内尺寸' : '当前：外尺寸';
+  }
+
+  function syncUnit() {
+    document.querySelectorAll('#unitToggle button').forEach(function (b) {
+      b.classList.toggle('on', b.dataset.u === unit);
+    });
+  }
+
+  function sizeVal(side) {
+    if (!S || !S[side]) return null;
+    return dimType === 'm' ? S[side].m : dimType === 'i' ? S[side].i : S[side].o;
+  }
+
+  function renderDims() {
+    ['L', 'W', 'D'].forEach(function (k) {
+      var inp = $('dim' + k);
+      var v = sizeVal(k);
+      inp.value = v == null ? '' : V2.unitVal(v, unit);
+      inp.placeholder = '—';
+    });
+    document.querySelectorAll('.dim-unit').forEach(function (el) { el.textContent = unit; });
+  }
+
+  function bindDimInputs() {
+    ['L', 'W', 'D'].forEach(function (k) {
+      $('dim' + k).addEventListener('input', function () {
+        var raw = parseFloat(this.value);
+        if (!isFinite(raw)) return;
+        var mm = unit === 'in' ? raw / V2.MM2IN : raw;
+        // 换算回「制造尺寸」
+        dims[k] = dimType === 'm' ? mm
+          : dimType === 'i' ? mm + 2 * S.inner
+            : mm - 2 * S.outer;
+        compute();
+        renderInfo();
+        renderCanvas();   // 图上标注按当前口径同步刷新
+      });
+    });
+  }
+
+  function renderOtherParams() {
+    var main = ['l', 'w', 'd', 'cal'];
+    var lv0 = (G.p || []).filter(function (p) { return p.l === 0 && main.indexOf(p.n) < 0; });
+    $('otherParams').innerHTML = lv0.length
+      ? lv0.map(paramHtml).join('')
+      : '<div style="font-size:12.5px;color:var(--muted)">该盒型无额外外观参数</div>';
+
+    var adv = (G.p || []).filter(function (p) { return p.l === 1 || p.l === 2; });
+    $('advParams').innerHTML = adv.length
+      ? adv.map(paramHtml).join('')
+      : '<div style="font-size:12.5px;color:var(--muted)">无</div>';
+    $('advWrap').style.display = adv.length ? '' : 'none';
+
+    document.querySelectorAll('.param input').forEach(function (inp) {
+      inp.addEventListener('input', function () {
+        ceLive[this.dataset.n] = this.value;
+        compute();
+        renderInfo();
+      });
+    });
+  }
+
+  function paramHtml(p) {
+    var label = p.d || C.labels[p.n] || p.n;
+    return '<div class="param">' +
+      '<label title="' + V2.esc(p.n) + '">' + V2.esc(label) + '</label>' +
+      '<input type="number" step="any" data-n="' + V2.esc(p.n) + '" value="' + V2.esc(p.v) + '">' +
+      '</div>';
+  }
+
+  /* ==================== 信息卡 ==================== */
+
+  function renderInfo() {
+    var b = V2.bboxSize(G);
+    $('infoBox').textContent = ID;
+
+    var rows = [
+      { k: 'm', label: '制造尺寸', cls: '' },
+      { k: 'i', label: '内尺寸', cls: '' },
+      { k: 'o', label: '外尺寸', cls: '' }
+    ];
+
+    var html = '<table class="size-table"><thead><tr><th>尺寸类型</th><th>长</th><th>宽</th><th>高</th></tr></thead><tbody>';
+    rows.forEach(function (r) {
+      var tds = ['L', 'W', 'D'].map(function (k) {
+        var s = S[k];
+        var v = s ? s[r.k] : null;
+        return '<td>' + V2.num(v) + '</td>';
+      }).join('');
+      html += '<tr data-t="' + r.k + '" class="' + (dimType === r.k ? 'on' : '') + '">' +
+        '<td>' + r.label + '</td>' + tds + '</tr>';
+    });
+    html += '</tbody></table>';
+    $('sizeTable').innerHTML = html;
+
+    $('sizeTable').querySelectorAll('tbody tr').forEach(function (tr) {
+      tr.addEventListener('click', function () {
+        dimType = tr.dataset.t;
+        syncSeg(); renderDims(); renderInfo(); renderCanvas();
+      });
+    });
+
+    $('kvExpand').textContent = V2.num(b.w) + ' × ' + V2.num(b.h) + ' mm';
+    /* 纸板厚度按模型口径 = 内向补偿 + 外向补偿，与「外 − 内 = 2×纸板厚度」自洽。
+       极少数盒型源数据的 cal 与 inner+outer 对不上（0017/M092/G013/G013A/HC010A），
+       此时左侧输入框仍显示源参数 CAL，保证「重新计算刀模」能复现原始刀模。 */
+    $('kvThick').textContent = V2.num(r2((+S.inner || 0) + (+S.outer || 0))) + ' mm';
+    $('kvInner').textContent = V2.num(S.inner) + ' mm';
+    $('kvOuter').textContent = V2.num(S.outer) + ' mm';
+    $('kvCut').textContent = (B.cut || 0) + ' / ' + (B.cre || 0);
+    $('kvMat').textContent = b.w * b.h / 1e6 >= 0 ? V2.num(r2(b.w * b.h / 1e6)) + ' m²' : '—';
+
+    var es = $('expSize');
+    if (es) es.textContent = '1:1 · ' + V2.num(b.w) + ' × ' + V2.num(b.h) + ' mm';
+  }
+
+  /* ==================== 导出 ==================== */
+
+  function exportMeta() {
+    return {
+      g: G, id: ID, name: V2.displayName(B), box: B,
+      sizes: S, dimType: dimType, unit: unit,
+      dim: showDim,
+      marks: showMark,
+      dims: markDims(),
+      faces: markFaces(),
+      markOffset: markOffset()
+    };
+  }
+
+  function setExpNote(text, kind) {
+    var el = $('expNote');
+    if (!el) return;
+    el.innerHTML = V2.esc(text);
+    el.className = 'exp-note' + (kind ? ' ' + kind : '');
+  }
+
+  function bindExport() {
+    var btns = document.querySelectorAll('.exp-btn');
+    if (!btns.length) return;
+    Array.prototype.forEach.call(btns, function (btn) {
+      btn.addEventListener('click', function () {
+        var kind = btn.dataset.exp;
+        var meta = exportMeta();
+        try {
+          if (kind === 'svg') {
+            V2.exportSVG(meta);
+            setExpNote('已导出 SVG · 1:1 实际尺寸（mm），切割线 CUT / 压痕线 CREASE 分层', 'ok');
+          } else if (kind === 'dxf') {
+            var r = V2.exportDXF(meta);
+            setExpNote('已导出 DXF · 切割线 ' + r.cut + ' 条 / 压痕线 ' + r.crease +
+              ' 条，进刀模厂可直接用', 'ok');
+          } else if (kind === 'pdf') {
+            setExpNote('正在准备打印视图…', '');
+            V2.exportPDF(meta).then(function (p) {
+              setExpNote(p.ok
+                ? '已调起打印（图纸 ' + p.w.toFixed(0) + ' × ' + p.h.toFixed(0) +
+                  ' mm）· 缩放选「100% 实际大小」，目标选「另存为 PDF」'
+                : (p.reason || 'PDF 导出失败'), p.ok ? 'ok' : 'err');
+            });
+          } else if (kind === 'png') {
+            setExpNote('正在渲染 PNG…', '');
+            V2.exportPNG(meta).then(function (r) {
+              setExpNote('已导出 PNG · ' + r.w + ' × ' + r.h + ' px', 'ok');
+            }).catch(function (e) {
+              setExpNote('PNG 导出失败：' + e.message, 'err');
+            });
+          }
+        } catch (e) {
+          setExpNote('导出失败：' + e.message, 'err');
+        }
+      });
+    });
+  }
+
+  /* ==================== 标签 & 相关 ==================== */
+
+  function renderTags() {
+    /* 过滤掉纯 SEO 关键词 / 关键词串标签（「包装纸箱设计」「玩具包装，电子产品包装」这类对选盒型没帮助） */
+    $('tags').innerHTML = (B.tags || []).filter(function (t) {
+      return !V2.isJunkName(t);
+    }).map(function (t) {
+      return '<a class="tag" href="index.html?q=' + encodeURIComponent(t) + '">' + V2.esc(t) + '</a>';
+    }).join('');
+  }
+
+  function renderRelated() {
+    var rel = C.boxes.filter(function (x) {
+      return x.id !== ID && x.cats.indexOf(B.cat) >= 0;
+    }).slice(0, 10);
+    if (!rel.length) { $('relatedWrap').style.display = 'none'; return; }
+
+    $('relatedRow').innerHTML = rel.map(function (x) {
+      return '<a class="card" href="box.html?id=' + encodeURIComponent(x.id) + '">' +
+        '<div class="thumb" data-box="' + V2.esc(x.id) + '"><svg viewBox="0 0 100 62" preserveAspectRatio="none"><rect x="12" y="10" width="76" height="42" rx="3" fill="#eceff3"/></svg></div>' +
+        '<div class="card-body"><div class="card-title">' + V2.esc(V2.displayName(x)) + '</div>' +
+        (V2.nameIsPlaceholder(x) ? '' : '<div class="card-id">' + V2.esc(x.id) + '</div>') + '</div></a>';
+    }).join('');
+
+    V2.ensureGeo(rel).then(function () {
+      rel.forEach(function (x) {
+        var host = document.querySelector('.thumb[data-box="' + cssEsc(x.id) + '"]');
+        var g = V2.geoOf(x.id);
+        if (host && g && (g.c.length || g.k.length)) host.innerHTML = V2.svg(g, { pad: 16 });
+      });
+    });
+  }
+
+  function cssEsc(s) { return String(s).replace(/["\\]/g, '\\$&'); }
+
+  /* ==================== 重新计算 ==================== */
+
+  function buildPms() {
+    var order = [];
+    var map = {};
+    String(G.op || '').split(',').forEach(function (kv) {
+      var i = kv.indexOf('=');
+      if (i <= 0) return;
+      var k = kv.slice(0, i).trim().toUpperCase();
+      order.push(k);
+      map[k] = kv.slice(i + 1).trim();
+    });
+
+    // 覆盖已改动的主参数
+    if (dims.L != null) map.L = dims.L;
+    if (dims.W != null) map.W = dims.W;
+    if (dims.D != null) map.D = dims.D;
+    map.CAL = ceLive.cal;
+
+    // 只发送 packmage 自己使用的参数集（op）。
+    // 其余 pm 参数（L1/W1/W2 等）是后端派生量，回传会污染求解结果，
+    // 因此仅当用户显式改动过时才追加。
+    var MAIN = { L: 1, W: 1, D: 1, CAL: 1 };
+    (G.p || []).forEach(function (p) {
+      var k = String(p.n).toUpperCase();
+      if (MAIN[k] || (k in map)) return;
+      var cur = ceLive[p.n];
+      var orig = G.ce[p.n];
+      if (cur != null && cur !== '' && String(cur) !== String(orig)) {
+        order.push(k);
+        map[k] = cur;
+      }
+    });
+
+    return order.filter(function (k) { return map[k] !== undefined && map[k] !== ''; })
+      .map(function (k) { return k + '=' + map[k]; }).join(',');
+  }
+
+  var apiOk = null;
+
+  function setStatus(kind, text) {
+    var el = $('status');
+    el.className = 'status' + (kind ? ' ' + kind : '');
+    el.innerHTML = '<i class="dot"></i>' + V2.esc(text);
+  }
+
+  function recompute(userAction) {
+    setStatus('', '正在求解…');
+    var body = JSON.stringify({ boxID: ID, inPms: buildPms() });
+
+    fetch('/api/box', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.success || !j.box) throw new Error((j && j.error) || '求解服务返回失败');
+        apiOk = true;
+        var nb = j.box;
+        var de = nb.de || {};
+        var ax = Math.abs(de.ox || 0), ay = Math.abs(de.oy || 0);
+        var cuts = [], creases = [];
+        (nb.fe || []).forEach(function (e) {
+          var style = e[1];
+          var dst = style === 0 ? cuts : creases;
+          if (e[0] === 0) dst.push([[e[2] + ax, e[3] + ay], [e[4] + ax, e[5] + ay]]);
+          else if (e[0] === 1) {
+            var cx = e[2] + ax, cy = e[3] + ay, r = e[4], sa = e[5], ea = e[6];
+            var diff = ea - sa;
+            while (diff < 0) diff += 360;
+            while (diff >= 360) diff -= 360;
+            if (diff === 0 && sa !== ea) diff = 360;
+            var steps = Math.max(16, Math.ceil(Math.abs(diff) / 3)), pts = [];
+            for (var s = 0; s <= steps; s++) {
+              var a = (sa + diff * (s / steps)) * Math.PI / 180;
+              pts.push([cx + r * Math.cos(a), cy - r * Math.sin(a)]);
+            }
+            dst.push(pts);
+          } else if (e[0] === 2) {
+            var p2 = [];
+            for (var j = 2; j < e.length; j += 2) p2.push([e[j] + ax, e[j + 1] + ay]);
+            if (p2.length >= 2) dst.push(p2);
+          }
+        });
+        var flat = function (polys) {
+          return polys.map(function (pl) {
+            var a = [];
+            pl.forEach(function (p) { a.push(Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10); });
+            return a;
+          });
+        };
+        var all = cuts.concat(creases);
+        var mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
+        all.forEach(function (pl) {
+          pl.forEach(function (p) {
+            if (p[0] < mnx) mnx = p[0];
+            if (p[0] > mxx) mxx = p[0];
+            if (p[1] < mny) mny = p[1];
+            if (p[1] > mxy) mxy = p[1];
+          });
+        });
+        if (!isFinite(mnx)) { mnx = 0; mny = 0; mxx = 100; mxy = 100; }
+
+        G = {
+          b: [mnx, mny, mxx, mxy],
+          c: flat(cuts), k: flat(creases),
+          p: (nb.pm || []).length ? (nb.pm || []).map(function (p) {
+            var o = { n: p.n, v: p.v, l: p.l || 0 };
+            if (p.d) o.d = String(p.d);
+            if (!/^(sty|choose|of|ct|nan|insty|tran)/i.test(p.n) && p.n !== 'cal') o.u = 1;
+            return o;
+          }) : G.p,
+          ce: parseCe(nb.ce),
+          op: (de.op || G.op),
+          cal: G.cal
+        };
+        ceLive = Object.assign({}, G.ce, { cal: ceLive.cal });
+        invalidateFaces();
+        compute();
+        renderCanvas();
+        renderInfo();
+        setStatus('ok', '已按新尺寸求解（展开 ' + V2.num((G.b[2] - G.b[0])) + ' × ' + V2.num((G.b[3] - G.b[1])) + ' mm）');
+      })
+      .catch(function (e) {
+        apiOk = false;
+        setStatus('err', '未连接求解服务，已保留原刀模图形（尺寸标注已更新）');
+        $('offlineNote').style.display = '';
+      });
+  }
+
+  function parseCe(ce) {
+    if (ce && typeof ce === 'object') return ce;
+    var m = {};
+    String(ce || '').split(',').forEach(function (s) {
+      var i = s.indexOf('=');
+      if (i > 0) m[s.slice(0, i).trim()] = s.slice(i + 1).trim();
+    });
+    return m;
+  }
+
+  function resetAll() {
+    ceLive = Object.assign({}, G.ce);
+    dims.L = numOr(G.ce.l);
+    dims.W = numOr(G.ce.w);
+    dims.D = numOr(G.ce.d);
+    compute();
+    var ci = $('calInput');
+    ci.value = S.t;
+    document.querySelectorAll('.param input').forEach(function (inp) {
+      var n = inp.dataset.n;
+      if (ceLive[n] != null) inp.value = ceLive[n];
+    });
+    renderDims();
+    renderInfo();
+    setStatus('', '已恢复为默认参数');
+  }
+
+  bindDimInputs();
+})();

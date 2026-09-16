@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>盒型详情 · 通用包装盒型库</title>
+<meta name="description" content="查看包装盒型的刀模展开图、制造尺寸 / 内尺寸 / 外尺寸三种尺寸对照、纸板厚度与切割压痕线统计，支持自定义尺寸重算并导出 SVG / DXF / PDF / PNG。">
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+  .sug-box {
+    position: absolute; top: calc(100% + 6px); left: 0; right: 0;
+    background: #fff; border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: var(--shadow-lg); overflow: hidden; display: none; z-index: 60;
+  }
+  .sug { display: flex; align-items: baseline; gap: 8px; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+  .sug:last-child { border-bottom: 0; }
+  .sug:hover { background: var(--accent-weak); }
+  .sug b { font-weight: 600; font-size: 13px; }
+  .sug span { font-size: 11.5px; color: var(--muted); margin-left: auto; font-family: ui-monospace, Menlo, monospace; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <a class="brand" href="index.html">
+    <span class="brand-mark">P</span>
+    通用包装盒型库
+    <span class="brand-sub">刀模展开图 · 参数化设计</span>
+  </a>
+  <div class="topbar-search">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <input id="q" type="search" placeholder="搜索盒型名称、编号或用途" autocomplete="off">
+    <div class="sug-box" id="qbox"></div>
+  </div>
+  <div class="topbar-right">
+    <a class="btn btn-sm" href="index.html">← 返回盒型库</a>
+  </div>
+</header>
+
+<nav class="crumbs">
+  <a href="index.html">盒型库</a>
+  <span class="sep">/</span>
+  <a id="crumbCat" href="index.html">分类</a>
+  <span class="sep">/</span>
+  <span class="now" id="crumbNow">—</span>
+</nav>
+<div class="detail-layout">
+
+  <!-- ========== 左：参数面板 ========== -->
+  <aside class="panel">
+    <div class="panel-head">
+      <h2>尺寸与参数</h2>
+      <button class="btn btn-ghost btn-sm" id="btnReset">重置</button>
+    </div>
+    <div class="panel-body">
+
+      <div class="field-group">
+        <div class="field-label">
+          <span>尺寸类型</span>
+          <span class="hint" id="typeHint">当前：制造尺寸</span>
+        </div>
+        <div class="seg" id="segType">
+          <button data-t="m" class="on">制造尺寸</button>
+          <button data-t="i">内尺寸</button>
+          <button data-t="o">外尺寸</button>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">
+          <span>外形尺寸</span>
+          <span class="unit-toggle" id="unitToggle">
+            <button data-u="mm" class="on">mm</button>
+            <button data-u="in">in</button>
+          </span>
+        </div>
+        <div class="dim-row"><label>长</label><div class="ip"><input id="dimL" type="number" step="any"><span class="u dim-unit">mm</span></div></div>
+        <div class="dim-row"><label>宽</label><div class="ip"><input id="dimW" type="number" step="any"><span class="u dim-unit">mm</span></div></div>
+        <div class="dim-row"><label>高</label><div class="ip"><input id="dimD" type="number" step="any"><span class="u dim-unit">mm</span></div></div>
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">
+          <span>纸板厚度</span>
+          <button class="btn btn-ghost btn-sm" id="btnCalReset" style="height:22px;font-size:11.5px;padding:0 6px">自定义</button>
+        </div>
+        <div class="dim-row">
+          <label>厚度</label>
+          <div class="ip"><input id="calInput" type="number" step="0.01"><span class="u">mm</span></div>
+        </div>
+        <div class="hint" id="calHint" style="font-size:11px;color:var(--muted)"></div>
+      </div>
+
+      <div class="field-group">
+        <div class="field-label"><span>其他参数</span></div>
+        <div class="param-list" id="otherParams"></div>
+      </div>
+
+      <details class="adv" id="advWrap">
+        <summary>高级参数</summary>
+        <div class="param-list" id="advParams"></div>
+      </details>
+
+      <div class="actions">
+        <button class="btn btn-primary" id="btnApply">重新计算刀模</button>
+      </div>
+      <div class="status" id="status"><i class="dot"></i>就绪</div>
+      <div class="notice" id="offlineNote" style="display:none;margin-top:10px">
+        <span>ℹ️</span>
+        <span>当前未连接求解服务，修改尺寸只会更新标注数值，不会重绘刀模。启动本地服务（<code>node server.js</code>）后即可实算。</span>
+      </div>
+
+    </div>
+  </aside>
+
+  <!-- ========== 中：刀模画布 ========== -->
+  <section class="panel canvas-panel">
+    <div class="canvas-tools">
+      <button class="btn btn-sm" id="zoomOut">−</button>
+      <span style="font-size:12px;color:var(--muted);min-width:42px;text-align:center" id="zoomVal">100%</span>
+      <button class="btn btn-sm" id="zoomIn">+</button>
+      <button class="btn btn-sm" id="zoomFit">适应</button>
+      <button class="btn btn-sm on" id="markToggle" title="在展开图上标出长 / 宽 / 高分别对应哪一块面板">长宽高</button>
+      <button class="btn btn-sm on" id="dimToggle" title="显示/隐藏图上尺寸标注：展开宽（上）与展开高（左）">展开尺寸</button>
+      <div class="legend">
+        <span><i></i>切割线</span>
+        <span class="lg-crease"><i></i>压痕线</span>
+        <span class="lg-mk" id="lgMark"><i style="background:#3b6ef5"></i><i style="background:#ef7f2c"></i><i style="background:#12a594"></i>长/宽/高</span>
+      </div>
+    </div>
+    <div class="canvas">
+      <div class="canvas-inner" id="canvasInner"></div>
+    </div>
+    <div class="canvas-foot">
+      <span>展开尺寸 <b id="footBox">—</b></span>
+      <span>切割线 <b id="footCut">—</b></span>
+      <span>压痕线 <b id="footCrease">—</b></span>
+      <span title="按压痕线之间的间距自动匹配长/宽/高对应的面板；匹配不上的尺寸不标，避免标错">尺寸位置 <b id="footMark">—</b></span>
+      <span style="margin-left:auto">刀模展开图（单位 mm）</span>
+    </div>
+  </section>
+
+  <!-- ========== 右：信息卡 ========== -->
+  <aside class="info-stack">
+
+    <div class="panel">
+      <div class="panel-head"><h2>三种尺寸对照</h2></div>
+      <div class="panel-body" style="padding:10px 12px 12px">
+        <div id="sizeTable"></div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.7">
+          内尺寸 = 制造尺寸 − 2×向内补偿<br>
+          外尺寸 = 制造尺寸 + 2×向外补偿<br>
+          <span style="color:var(--muted)">（补偿为单边量，一个尺寸跨两块纸板，故 ×2；纸板厚度 = 向内补偿 + 向外补偿）</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>导出下载</h2><span style="font-size:11.5px;color:var(--muted)" id="expSize">—</span></div>
+      <div class="panel-body" style="padding:10px 12px 12px">
+        <div class="exp-grid">
+          <button class="exp-btn" data-exp="svg" title="矢量刀模图，可在 Illustrator / CorelDRAW 中编辑">
+            <b>SVG</b><span>矢量刀模图</span>
+          </button>
+          <button class="exp-btn" data-exp="dxf" title="DXF 刀模图，刀模厂 / 激光切割可直接导入">
+            <b>DXF</b><span>刀模厂直用</span>
+          </button>
+          <button class="exp-btn" data-exp="pdf" title="按 1:1 实际尺寸打印，可另存为 PDF">
+            <b>PDF</b><span>1:1 打印</span>
+          </button>
+          <button class="exp-btn" data-exp="png" title="高分辨率位图，适合插入文档或做预览图">
+            <b>PNG</b><span>高清图片</span>
+          </button>
+        </div>
+        <div class="exp-note" id="expNote">
+          SVG / DXF 按 <b>1:1 实际尺寸（mm）</b>输出：切割线在 <b>CUT</b> 层、压痕线在 <b>CREASE</b> 层。
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>刀模规格</h2><span style="font-size:11.5px;color:var(--muted)" id="infoBox">—</span></div>
+      <div class="panel-body" style="padding:6px 14px 12px">
+        <div class="kv"><span>盒型编号</span><b id="kvId">—</b></div>
+        <div class="kv" id="rowCat"><span>所属分类</span><b id="kvCat">—</b></div>
+        <div class="kv"><span>展开尺寸</span><b id="kvExpand">—</b></div>
+        <div class="kv"><span>纸板厚度</span><b id="kvThick">—</b></div>
+        <div class="kv"><span>向内补偿</span><b id="kvInner">—</b></div>
+        <div class="kv"><span>向外补偿</span><b id="kvOuter">—</b></div>
+        <div class="kv"><span>切割 / 压痕</span><b id="kvCut">—</b></div>
+        <div class="kv"><span>用纸面积</span><b id="kvMat">—</b></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>用途标签</h2></div>
+      <div class="panel-body"><div class="tag-cloud" id="tags"></div></div>
+    </div>
+
+  </aside>
+</div>
+
+<div class="related" id="relatedWrap" style="max-width:1500px;margin:0 auto;padding:0 28px 60px">
+  <h2>同类盒型</h2>
+  <div class="related-row" id="relatedRow"></div>
+</div>
+
+<script src="assets/common.js"></script>
+<script src="assets/export.js"></script>
+<script src="assets/detail.js"></script>
+</body>
+</html>

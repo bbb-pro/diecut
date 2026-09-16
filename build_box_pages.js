@@ -285,7 +285,7 @@ function renderPage(o) {
     '<div class="fig">' + svgBlock +
     '<p class="cap">图：' + esc(id) + ' 刀模展开图 — 实线为切割线，虚线为压痕线</p></div>\n' +
 
-    '<p class="cta"><a class="btn" href="../index.html?box=' + encodeURIComponent(id) + '">' +
+    '<p class="cta"><a class="btn" href="../../index.html?box=' + encodeURIComponent(id) + '">' +
     '在设计器中打开 ' + esc(id) + '</a></p>\n' +
 
     '<h2>可调参数</h2>\n' +
@@ -306,7 +306,7 @@ function renderPage(o) {
     (rel.length ? '<h2>同类盒型</h2>\n<div class="rel">\n      ' + relLinks + '\n</div>\n' : '') +
 
     '<footer><a href="' + BASE + '/box/">盒型库</a> &middot; 全站 ' + boxTotal + ' 个盒型 &middot; ' +
-    '<a href="../index.html">纸盒刀模设计器</a></footer>\n' +
+    '<a href="../../index.html">纸盒刀模设计器</a></footer>\n' +
     '</body>\n</html>\n';
 }
 
@@ -332,7 +332,7 @@ function renderIndex(ids, byCat, cateName, meta) {
     '<link rel="canonical" href="' + BASE + '/box/">\n' +
     '<link rel="stylesheet" href="box.css">\n' +
     '</head>\n<body>\n' +
-    '<nav class="crumb"><a href="../index.html">纸盒刀模设计器</a> &rsaquo; <strong>盒型库</strong></nav>\n' +
+    '<nav class="crumb"><a href="../../index.html">纸盒刀模设计器</a> &rsaquo; <strong>盒型库</strong></nav>\n' +
     '<h1>纸盒盒型库（' + total + ' 种）</h1>\n' +
     '<p class="lead">按结构分类浏览全部 ' + total + ' 种盒型，点击进入可查看该盒型的刀模展开图、可调参数与结构标签。</p>\n' +
     '<p class="cta"><a class="btn" href="../index.html">打开刀模设计器</a></p>\n' +
