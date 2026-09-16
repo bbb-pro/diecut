@@ -3,7 +3,7 @@
  * build_v2.js — 为 v2 界面（pacdora 风格）生成数据
  *
  * 输出：
- *   data/catalog.js          列表页元数据（1278 盒，无几何）
+ *   data/catalog.js          列表页元数据（全部盒型，无几何）
  *   data/geo/NN.js           几何分片（每片 100 盒，含几何 + 参数 + 尺寸）
  *
  * 设计要点：
@@ -195,7 +195,7 @@ function main() {
   const UNITLESS = /^(sty|choose|of|ct|nan|insty|tran)/i;
   const isUnitless = (n) => UNITLESS.test(n) || n === 'cal';
 
-  /* 只清生成物。data/ 下还有 thumbs/（1278 张 packmage 官方缩略图），
+  /* 只清生成物。data/ 下还有 thumbs/（packmage 官方缩略图，与盒型一一对应），
      所以绝不能用 rmSync(OUT, recursive) 整目录删 —— 那会把缩略图一起删光。 */
   fs.rmSync(path.join(OUT, 'geo'), { recursive: true, force: true });
   fs.rmSync(path.join(OUT, 'catalog.js'), { force: true });

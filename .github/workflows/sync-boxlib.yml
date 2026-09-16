@@ -64,7 +64,8 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 
           # 只暂存同步产物，避免把临时文件 / 备份目录带进仓库
-          git add -- packmage_data.js packmage_boxlib_zh.js data box sitemap.xml robots.txt
+          # index.html 也算产物：build_box_pages.js 会回写它头部的盒型总数 / 分类数
+          git add -- packmage_data.js packmage_boxlib_zh.js data box sitemap.xml robots.txt index.html
 
           if git diff --cached --quiet; then
             echo "无变化，跳过提交" | tee -a "$GITHUB_STEP_SUMMARY"

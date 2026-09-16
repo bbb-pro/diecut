@@ -3,7 +3,8 @@
  * build_box_pages.js — 为盒型库批量生成静态 SEO 着陆页
  *
  * 输入：packmage_data.js（几何 + 参数）、packmage_boxlib_zh.js（中文标签 + 分类位掩码）
- * 输出：box/<ID>/index.html（1278 页）、box/index.html（目录）、sitemap.xml、robots.txt
+ * 输出：box/<ID>/index.html（每个盒型一页）、box/index.html（目录）、sitemap.xml、robots.txt
+ *       + 回写根目录 index.html 的 SEO 头部数字（盒型总数 / 分类数）
  *
  * 几何解析逻辑与 packmage_boxtypes.js 的 convertPackmageGeometry() 保持一致，
  * 保证静态页上的刀模图与在线设计器渲染结果完全一样。
@@ -117,6 +118,42 @@ function esc(s) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/* ---------------- 根页 SEO 头部的数字回写 ---------------- */
+
+/**
+ * 根目录 index.html 是站点主入口，它的 <title> / description / og / ld+json
+ * 里写死了「N 个免费刀模展开图」「N 个分类」。盒型库一更新这些数字就会漂，
+ * 所以每次生成都按本次真实数量改写一遍（幂等：数字已对就不写盘）。
+ *
+ * 只替换这几个特定句式里的数字，其余字节原样保留（含行尾，不做任何归一化）。
+ */
+function syncIndexCounts(total, cateCount) {
+  const file = path.join(ROOT, 'index.html');
+  if (!fs.existsSync(file)) return { changed: false, replaced: 0, missing: true };
+
+  const src = fs.readFileSync(file, 'utf8');
+  let replaced = 0;
+  let out = src;
+
+  const rules = [
+    [/(\d+)(\s*个免费刀模展开图)/g, total],          // <title>、og:title
+    [/(\d+)(\s*个专业包装盒型刀模展开图)/g, total],   // description、og:description
+    [/(\d+)(\s*种包装盒型刀模展开图)/g, total],       // ld+json
+    [/(\d+)(\s*个分类)/g, cateCount],                 // description 里的分类数
+  ];
+
+  rules.forEach(([re, n]) => {
+    out = out.replace(re, (m, d, tail) => {
+      if (d !== String(n)) replaced++;
+      return n + tail;
+    });
+  });
+
+  if (out === src) return { changed: false, replaced: 0 };
+  fs.writeFileSync(file, out);
+  return { changed: true, replaced: replaced };
+}
+
 /* ---------------- 主流程 ---------------- */
 
 function main() {
@@ -209,9 +246,20 @@ function main() {
   fs.writeFileSync(path.join(ROOT, 'robots.txt'),
     'User-agent: *\nAllow: /\n\nSitemap: ' + BASE + '/sitemap.xml\n');
 
+  // 根页 SEO 头部的盒型数 / 分类数跟着一起走，免得上线后标题还挂着旧数字
+  const idxSync = syncIndexCounts(ids.length, cates.length);
+
   console.log('生成盒型页: ' + count + ' 个（无有效几何: ' + noGeom + '）');
   console.log('输出目录: ' + OUT_DIR);
   console.log('sitemap.xml / robots.txt 已写入仓库根目录');
+  if (idxSync.missing) {
+    console.log('⚠ 未找到 index.html，跳过 SEO 头部数字回写');
+  } else if (idxSync.changed) {
+    console.log('index.html SEO 头部已更新: 盒型 ' + ids.length + ' 个 / 分类 ' + cates.length
+      + ' 个（改写 ' + idxSync.replaced + ' 处）');
+  } else {
+    console.log('index.html SEO 头部数字已是最新（' + ids.length + ' 盒 / ' + cates.length + ' 分类）');
+  }
 }
 
 function loc(u, pri) {
@@ -310,7 +358,8 @@ function renderPage(o) {
     '</body>\n</html>\n';
 }
 
-let boxTotal = 1278;
+// main() 一开始就会按真实盒型数覆盖它，这里只是占位（不要在别处假设它非 0）
+let boxTotal = 0;
 
 function renderIndex(ids, byCat, cateName, meta) {
   const total = ids.length;
