@@ -84,10 +84,11 @@ jobs:
           git push
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
+          # 注意：这里不要接 `| head`，set -o pipefail 下 git 会收到 SIGPIPE 而被判失败（退出码 141）
           {
             echo "### 同步结果"
             echo '```'
-            git show --stat --oneline HEAD | head -40
+            git show --shortstat --format='%h %s' HEAD
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
