@@ -324,10 +324,10 @@ async function main() {
   if (failed.length) log('⚠ 抓取失败（下次同步自动重试）: ' + failed.join(', '));
 
   /* --- 6) 退出码 --- */
-  // 已有清单里的盒型抓不到（如上游确实无几何的 Q002）不算致命；
-  // 但「本来该新增却一个都没成功」= 网络不通，必须让 CI 红掉。
-  if (!DRY && targets.length > 0 && ok === 0) {
-    console.error('❌ 需要抓取 ' + targets.length + ' 个盒型但一个都没成功，判定为上游不可达');
+  // 判定「上游不可达」必须看**真实抓取失败**，不能看 ok===0：
+  // 若本次唯一待抓的就是 Q002 这种上游确认无数据的盒型（rejected），ok 天然是 0，但那不是故障。
+  if (!DRY && failed.length > 0 && ok === 0) {
+    console.error('❌ 需要抓取 ' + targets.length + ' 个盒型，' + failed.length + ' 个失败且无一成功，判定为上游不可达');
     process.exit(1);
   }
   if (!DRY && failed.length > 0) {
