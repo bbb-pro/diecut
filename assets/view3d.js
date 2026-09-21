@@ -260,8 +260,14 @@ function fromOfficial(raw, id) {
   return { i: id, s: maxStep, nc: nc, co: co, P: P, custom: 1 };
 }
 
-/* 实时重折叠接口（站点根下，GitHub Pages 子路径也能正确解析） */
-const API3D = new URL('../api/box3d', import.meta.url).href;
+/* 实时重折叠接口
+   ❗ 必须用【域名根】的绝对路径，不能用 new URL('../api/box3d', import.meta.url)。
+      站点部署在子路径 /diecut/ 下，`../` 从 /diecut/assets/view3d.js 只退一层到
+      /diecut/，于是 POST 打到 Pages 的静态托管 → 静态资源不收 POST → **405**。
+      而 Worker 的路由挂在域名根的 /api/*，与站点在哪个子目录无关。
+      本地看不出这个坑：本地站点根就是 /，相对路径恰好算对。
+      与 detail.js 的 '/api/box' 保持同一口径。 */
+const API3D = '/api/box3d';
 
 /* ---------- 自动折叠的时间参数 ----------
    官方（lin3d.min.js 的 ft()）是一条 TWEEN：0→1 走 timeOfFold（默认 8000ms）后
