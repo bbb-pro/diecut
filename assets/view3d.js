@@ -5,15 +5,15 @@
    **最小输入集**（面板轮廓 + 三角形索引 + 铰链线 + 折角关键帧），不是烘好的帧。
    所以浏览器端跑的是同一套折叠算法，折叠动画是白送的。
 
-   算法与 _fold4.mjs / 官方 UI 引擎同源：
-     M_child = M_parent · R(铰链线, θ(t))，θ 由 FoldLine 关键帧按官方
+   算法与 _fold4.mjs 同源：
+     M_child = M_parent · R(铰链线, θ(t))，θ 由 FoldLine 关键帧按
      getCurrentAngle 语义插值（数组短的先折完停住，数组长的贯穿全轴）。
 
    两个数据来源，结构完全相同，渲染/动画/交互零分支：
      ① load(id)         → 静态 data/3d/<ID>.json（原始尺寸，0 请求，可缓存）
-     ② load(id, {pms})  → POST /api/box3d 让官方按**当前尺寸**重算折叠树
+     ② load(id, {pms})  → POST /api/box3d 按**当前尺寸**重算折叠树
         （用户改过尺寸时走这条；抽样 24 盒发现约 1/5 的盒型折角会随尺寸变，
-          所以必须重新问一次官方，不能自己按比例缩放几何糊过去）
+          所以必须重新取一次，不能自己按比例缩放几何糊过去）
    ============================================================ */
 
 /* ---------- 4×4 变换（与 _fold4.mjs 逐字同源） ---------- */
@@ -57,7 +57,7 @@ function rotAxis(p, u, deg) {
   return m;
 }
 
-/** 官方 FoldLine.getCurrentAngle 的逐字翻译 */
+/** FoldLine.getCurrentAngle 的等价实现 */
 function angleAt(kf, t, step) {
   if (!kf || !kf.length) return 0;
   const T = Math.max(step || kf.length, kf.length) - 1;
@@ -72,7 +72,7 @@ function angleAt(kf, t, step) {
 /**
  * 按进度 t 求每个面板的变换矩阵。
  * ❗ 不能拿 M[i] 当「已访问」判断（节点入队时就已赋值，会把整棵子树跳过）。
- *   这里靠 `M[k]` 只拦重复入队，语义与官方一致。
+ *   这里靠 `M[k]` 只拦重复入队。
  */
 function buildM(P, t, step, M) {
   const n = P.length;
@@ -129,14 +129,14 @@ function r1(v) { return Math.round(v * 10) / 10; }
 function r2(v) { return Math.round(v * 100) / 100; }
 
 /* ============================================================
-   官方实时数据 → 内部紧凑格式
+   接口实时返回的数据 → 内部紧凑格式
    ------------------------------------------------------------
-   官方 /uc/LinTest3D 的 Box3D 是「键不带引号的类 JSON 字面量」，
+   /uc/LinTest3D 返回的 Box3D 是「键不带引号的类 JSON 字面量」，
    如 {Border:[-219,-324,438,125,1],Rel:["M0",…],Planes:[…]}。
 
    ❗不用 eval / new Function 解析：这段代码跑在用户浏览器里，
      站点一旦加 CSP 就会整块挂掉。改成逐字符扫描 + 补键引号 + JSON.parse。
-     与官方原格式的等价性已用全站 1293 盒逐盒比对过（见 _v3d_parse_check.mjs）。
+     与原始格式的等价性已用全站 1293 盒逐盒比对过（见 _v3d_parse_check.mjs）。
    ============================================================ */
 
 function isWS(ch) {
@@ -174,7 +174,7 @@ function parseLoose(src) {
 }
 
 /**
- * 官方 Box3D + BoxJson → 与 data/3d/<ID>.json 完全同构的对象。
+ * 接口返回的 Box3D + BoxJson → 与 data/3d/<ID>.json 完全同构的对象。
  * 逐条对应 _fold4.mjs 的 officialModel：Rel 建父子、FoldLine 端点 y 取反、
  * 顶点 y 取反、按父链求连通分量、分量沿 X 错开摆一排。
  * 折叠矩阵不必在这里算 —— 渲染时 buildM 会按进度实时求。
@@ -201,7 +201,7 @@ function fromOfficial(raw, id) {
       if (idxOf.has(pName)) parent = idxOf.get(pName);
       else for (var t = 0; t < names.length; t++) if (short(names[t]) === pName) { parent = t; break; }
     }
-    /* FoldLine = [x1,y1,x2,y2,[折角关键帧…]]；官方整条管线跑在 Y 镜像系，这里同步取反。
+    /* FoldLine = [x1,y1,x2,y2,[折角关键帧…]]；整条管线跑在 Y 镜像系，这里同步取反。
        折角实测全是纯数字（全站 30091 组关键帧、0 个 JS 表达式），不需再求值。 */
     var L = null, fl = pl.FoldLine;
     if (fl && fl.length >= 4) {
@@ -270,10 +270,10 @@ function fromOfficial(raw, id) {
 const API3D = '/api/box3d';
 
 /* ---------- 自动折叠的时间参数 ----------
-   官方（lin3d.min.js 的 ft()）是一条 TWEEN：0→1 走 timeOfFold（默认 8000ms）后
+   上游动画是一条 TWEEN：0→1 走 timeOfFold（默认 8000ms）后
    .repeat(Infinity).yoyo(true) 无限往复，两端**不停**；速度由「自动折叠速度」滑块调。
 
-   这里按用户要求改成：单程 3.8s（比原来 1.5s 慢一倍多，也不至于像官方 8s 那么拖），
+   这里按用户要求改成：单程 3.8s（比原来 1.5s 慢一倍多，也不至于拖到 8s），
    到首帧（全展开）和末帧（全折好）各停 2 秒再掉头。 */
 const SPEED_SLOW = 6000;    // 滑块最左：单程 6s
 const SPEED_FAST = 1400;    // 滑块最右：单程 1.4s
@@ -282,9 +282,9 @@ const DWELL_MS = 2000;      // 首末帧停留
 
 function speedToMs(v) { return Math.round(SPEED_SLOW + (SPEED_FAST - SPEED_SLOW) * v / 100); }
 
-/* ---------- 纸材质（官方 3D 面板的「纸种底色」）
+/* ---------- 纸材质（「纸种底色」）
 
-   官方 cad.packmage.cn 的 3D 里，所谓「颜色设置」其实是**预置材质贴图**：
+   所谓「颜色设置」其实是**预置材质贴图**：
      /Images/Cad/Paper/{wa,niu,jin,yin,qing,pink,red}_A.jpg
    已随站点下载到 assets/mat/（本地自带，离线可用，不依赖上游）。
 
@@ -319,7 +319,7 @@ export function create(host, onInfo, onPaper) {
       '<span class="v3d-chip">加载中…</span>' +
       '<div class="v3d-viewbtns">' +
         '<button class="v3d-btn v3d-paper-t" type="button" aria-haspopup="true" aria-expanded="false"'
-          + ' title="换纸张材质 / 盒体颜色（纸样取自官方素材）">纸种 ⌄</button>' +
+          + ' title="换纸张材质 / 盒体颜色">纸种 ⌄</button>' +
         '<button class="v3d-btn v3d-rot" type="button" title="让模型自己慢慢转圈，方便看背面">自动旋转</button>' +
         '<button class="v3d-btn v3d-home" type="button" title="回到刚进来时的视角（不改动自动折叠 / 自动旋转的开关）">复位视角</button>' +
         '<button class="v3d-btn v3d-gridb" type="button" aria-pressed="true"'
@@ -390,7 +390,7 @@ export function create(host, onInfo, onPaper) {
     camera = new THREE.PerspectiveCamera(35, w / h, 1, 200000);
 
     /* 鼠标操作：左键拖拽旋转 / 中键拖拽平移 / 滚轮缩放
-       ❗右键不绑任何动作。OrbitControls 默认 RIGHT: PAN（官方那套也是右键平移），
+       ❗右键不绑任何动作。OrbitControls 默认 RIGHT: PAN，
        这里刻意改成中键；RIGHT 置 null 后 onMouseDown 的 switch 走 default → state=NONE，
        右键彻底不响应（不是「换了个动作」，是真的没动作）。 */
     controls = new OrbitControls(camera, renderer.domElement);
@@ -437,7 +437,7 @@ export function create(host, onInfo, onPaper) {
     return true;
   }
 
-  /* ---------- 纸材质：官方 3D 面板的「纸种底色」 ---------- */
+  /* ---------- 纸材质：纸种底色 ---------- */
 
   const texCache = {};
   let curPaper = 'plain', curTint = null;
@@ -738,7 +738,7 @@ export function create(host, onInfo, onPaper) {
   /* ---------- 纸种浮层 ---------- */
 
   paperPop.innerHTML =
-    '<div class="v3d-paper-hd">纸张材质<em>官方纸样</em></div>' +
+    '<div class="v3d-paper-hd">纸张材质<em>7 种纸样</em></div>' +
     '<div class="v3d-paper-grid">' +
       PAPERS.map(function (p) {
         return '<button type="button" class="v3d-sw" data-k="' + p.k + '" title="' + p.name + '"'
@@ -839,7 +839,7 @@ export function create(host, onInfo, onPaper) {
 
     /**
      * @param id   盒型 ID
-     * @param opts { pms } —— 给了 pms 就走「实时重折叠」：让官方按这组尺寸现算折叠树。
+     * @param opts { pms } —— 给了 pms 就走「实时重折叠」：按这组尺寸重新计算折叠树。
      *             返回两种来源都是同一种结构，下游零分支。
      */
     load: function (id, opts) {
@@ -850,7 +850,7 @@ export function create(host, onInfo, onPaper) {
         THREE = L.THREE; OrbitControls = L.OrbitControls;
         ensureGL();
         if (pms) {
-          /* 走站内代理（浏览器不能跨域直连官方） */
+          /* 走站内代理（浏览器不能跨域直连） */
           return fetch(API3D, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -858,7 +858,7 @@ export function create(host, onInfo, onPaper) {
           }).then(function (r) {
             return r.text().then(function (txt) {
               /* 代理是原样透传上游响应（见 server.js / worker.js 注释），
-                 所以这里直接就是官方的 {BoxJson, LineExp, Box3D, …} */
+                 所以这里直接就是 {BoxJson, LineExp, Box3D, …} */
               var j = null;
               try { j = JSON.parse(txt); } catch (e2) { j = null; }
               if (!r.ok || !j || !j.Box3D) {
@@ -867,7 +867,7 @@ export function create(host, onInfo, onPaper) {
                 throw e3;
               }
               var packed = fromOfficial(j, id);
-              /* 折叠结构是官方的属性，不随尺寸变 —— 这里没有就等于该盒型做不了 */
+              /* 折叠结构是按标准尺寸给定的，不随尺寸变 —— 这里没有就等于该盒型做不了 */
               if (!packed.P.some(function (p) { return p.L; })) {
                 var e4 = new Error('no-fold-tree');
                 e4.code = 'nofold';
@@ -899,7 +899,7 @@ export function create(host, onInfo, onPaper) {
         return info;
       }).catch(function (e) {
         if (e && e.code === 'nofold') {
-          setMsg('该盒型官方没有提供折叠结构（多为平面件或对折卡），<br>暂时做不了 3D 立体图。');
+          setMsg('该盒型没有折叠结构（多为平面件或对折卡），<br>暂时做不了 3D 立体图。');
         } else if (e && e.code === 'noapi') {
           setMsg('按当前尺寸重新折叠失败，已保留上一次的 3D 图。<br>' + esc(e.message));
         } else {
@@ -921,7 +921,7 @@ export function create(host, onInfo, onPaper) {
       return legMs;
     },
 
-    /* 自动旋转（官方那颗 fa-refresh 按钮） */
+    /* 自动旋转 */
     autoRotate: function (on) {
       if (!controls) return false;
       controls.autoRotate = (on === undefined) ? !controls.autoRotate : !!on;
@@ -969,7 +969,7 @@ export function create(host, onInfo, onPaper) {
     if (playing) stopPlay(); else startPlay();
   });
 
-  /* 手动拖进度条就停下自动折叠（和官方拖滑块即停自动折叠一个道理），拖完可以再按播放 */
+  /* 手动拖进度条就停下自动折叠（拖滑块即停自动折叠），拖完可以再按播放 */
   range.addEventListener('input', function () {
     stopPlay();
     applyProgress(parseInt(range.value, 10) / 1000);

@@ -112,7 +112,7 @@ function buildCatalog(rest) {
   }));
 }
 
-/** 分类表：Idx 0 官方叫「免费」，站点上叫「常用」，保持既有口径 */
+/** 分类表：Idx 0 上游叫「免费」，站点上叫「常用」，保持既有口径 */
 function buildCategories(cates) {
   return cates.map((c) => ({
     tid: c.TID,
@@ -187,7 +187,7 @@ function fetchBox(boxID) {
   });
 }
 
-/** 官方 PmItems（Name/Desc/DefaultV/DownList/Layer）→ 站内紧凑格式 {n,d,v,l,dl}
+/** 抓到的原始 PmItems（Name/Desc/DefaultV/DownList/Layer）→ 站内紧凑格式 {n,d,v,l,dl}
  *  - v 优先取该盒 ce 里的**实际值**（ce 是 "l=300,w=200,…" 字符串），没有才用 DefaultV
  *  - ❗ DownList 的 **key（去掉下划线）才是要传回后端的数值**，value 只是显示文案，
  *    所以必须存成 [{v,t}]，只取文本会把「上插舌样式=2」变成「锁扣」这种非数值，

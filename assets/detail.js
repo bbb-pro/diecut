@@ -337,8 +337,8 @@
       if (e && e.code === 'nofold') {
         no3D = true;
         view3dBtn.disabled = true;
-        view3dBtn.title = '该盒型官方没有提供折叠结构，暂不支持 3D 立体图';
-        setStatus('', '该盒型官方未提供折叠结构（平面件／对折卡），暂无 3D 立体图');
+        view3dBtn.title = '该盒型没有折叠结构，暂不支持 3D 立体图';
+        setStatus('', '该盒型没有折叠结构（平面件／对折卡），暂无 3D 立体图');
       } else {
         setStatus('err', '3D 视图加载失败：' + (e && e.message ? e.message : e));
       }
@@ -347,8 +347,8 @@
   }
 
   /**
-   * 按「输入框里的当前尺寸」让官方重算折叠树。
-   * @param allowFallback 首次进入时用：新尺寸算不出来（个别盒型在极端尺寸下官方不给树）
+   * 按「输入框里的当前尺寸」重新计算折叠树。
+   * @param allowFallback 首次进入时用：新尺寸算不出来（个别盒型在极端尺寸下算不出折叠树）
    *                      就退回标准尺寸，至少让用户看到立体图，并在状态栏说明。
    */
   function refresh3D(allowFallback) {
@@ -390,9 +390,9 @@
     $('f3CompWrap').hidden = !(info.comps > 1);
     $('f3Comps').textContent = info.comps;
     $('f3Steps').textContent = info.steps > 1 ? '（' + info.steps + ' 段折叠）' : '';
-    /* 数据来源要说清楚：官方标准盒型 / 按用户改后的尺寸现算 */
+    /* 数据来源要说清楚：标准尺寸 / 按用户改后的尺寸现算 */
     var tag = $('f3Tag');
-    if (tag) tag.textContent = info.custom ? '按当前尺寸重算' : '按官方标准盒型生成';
+    if (tag) tag.textContent = info.custom ? '按当前尺寸重算' : '按标准尺寸生成';
   }
 
   /* ---------------- 长/宽/高 面板定位（结果缓存，避免每次重绘都重扫几何） ---------------- */
@@ -532,7 +532,7 @@
       ? lv0.map(paramHtml).join('')
       : '<div style="font-size:12.5px;color:var(--muted)">该盒型无额外外观参数</div>';
 
-    /* 高级参数：官方 PmItems 按 Layer 分组（1..6），分层列出才好找 */
+    /* 高级参数：按 Layer 分组（1..14），分层列出才好找 */
     var adv = (G.p || []).filter(function (p) { return p.l >= 1; });
     if (adv.length) {
       var byL = {};
@@ -557,7 +557,7 @@
     });
   }
 
-  /* 官方 DownList 参数（如「左右插孔数」1/2/3）渲染成下拉，其余仍是数字输入 */
+  /* 下拉型参数（如「左右插孔数」1/2/3）渲染成 select，其余仍是数字输入 */
   function paramHtml(p) {
     var label = p.d || C.labels[p.n] || p.n;
     var n = V2.esc(p.n);

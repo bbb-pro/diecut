@@ -195,7 +195,7 @@ function main() {
   const UNITLESS = /^(sty|choose|of|ct|nan|insty|tran)/i;
   const isUnitless = (n) => UNITLESS.test(n) || n === 'cal';
 
-  /* 只清生成物。data/ 下还有 thumbs/（packmage 官方缩略图，与盒型一一对应），
+  /* 只清生成物。data/ 下还有 thumbs/（箱型立体缩略图，与盒型一一对应），
      所以绝不能用 rmSync(OUT, recursive) 整目录删 —— 那会把缩略图一起删光。 */
   fs.rmSync(path.join(OUT, 'geo'), { recursive: true, force: true });
   fs.rmSync(path.join(OUT, 'catalog.js'), { force: true });
@@ -277,7 +277,7 @@ function main() {
       const lb = p.d || labelMap[p.n];
       if (lb) o.d = String(lb);
       if (!isUnitless(p.n)) o.u = 1;
-      if (p.dl && p.dl.length) o.dl = p.dl;   // 官方 DownList（如「左右插孔数」1/2/3）
+      if (p.dl && p.dl.length) o.dl = p.dl;   // 下拉选项（如「左右插孔数」1/2/3）
       return o;
     });
 

@@ -200,7 +200,7 @@ function callPackmageAPI(params, attempt) {
 
 /* ===== LinTest3D proxy：按给定尺寸现算 3D 折叠树 =====
  * 详情页改过尺寸后，3D 不能沿用原始尺寸的折叠树 —— 抽样 24 盒发现约 1/5 的盒型
- * 折角会随尺寸变化，所以必须让官方按新参数重算一次。
+ * 折角会随尺寸变化，所以必须按新参数重新算一次。
  * 上游返回里只挑折叠用得到的三个字段，别把整包（含大量 2D 数据）透传给浏览器。
  */
 function callLin3D(params, attempt) {

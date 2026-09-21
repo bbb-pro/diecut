@@ -493,7 +493,7 @@ button, input, select { font-family: inherit; font-size: inherit; color: inherit
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 8px center; }
 
-/* 高级参数按官方 Layer 分组，组标题做成分隔行 */
+/* 高级参数按 Layer 分组，组标题做成分隔行 */
 .param-layer { display: flex; align-items: center; gap: 8px; margin: 12px 0 2px; }
 .param-layer:first-child { margin-top: 0; }
 .param-layer span { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .3px; white-space: nowrap; }
@@ -545,9 +545,9 @@ details.adv .field-group { margin-top: 12px; }
 .canvas-col { position: relative; min-width: 0; }
 
 /*
-  视图切换条 =「文件夹标签」，照官方那套：
+  视图切换条 =「文件夹标签」：
   标签挂在「有边框的内容盒」【外面】正上方，激活项去掉下边框 + 白底，
-  把卡片上边框那 1px 吃掉，看起来跟卡片连成一体（官方的 li.active{border-bottom:0} 就是这个意思）。
+  把卡片上边框那 1px 吃掉，看起来跟卡片连成一体。
   几何：条高 34、上移 33 → 底边正好落在卡片上边框（1px）上。
 */
 .view-switch {
@@ -836,7 +836,7 @@ details.adv .field-group { margin-top: 12px; }
 .hvp-iso { flex: 1 1 45%; }
 .hvp-flat > svg, .hvp-iso > svg { width: 100%; height: 100%; display: block; }
 
-/* 右栏 = packmage 官方 280×208 立体图（本地自托管，回源兜底） */
+/* 右栏 = 280×208 立体图（本地自托管，回源兜底） */
 .hvp-iso .hvp-thumb {
   max-width: 100%;
   max-height: 100%;
@@ -845,7 +845,7 @@ details.adv .field-group { margin-top: 12px; }
   display: block;
   object-fit: contain;
   border-radius: 5px;
-  background: #fff;                     /* 官方图是白底，深色主题下也保持白底 */
+  background: #fff;                     /* 立体图是白底，深色主题下也保持白底 */
   image-rendering: auto;
 }
 
@@ -917,7 +917,7 @@ details.adv .field-group { margin-top: 12px; }
 .v3d-viewbtns .v3d-btn { height: 28px; background: rgba(255, 255, 255, .92); box-shadow: var(--shadow); }
 .v3d-paper-t[aria-expanded="true"] { background: var(--accent-weak) !important; border-color: #bcd0ff; color: var(--accent-dark); font-weight: 600; }
 
-/* 纸种浮层：挂在按钮组右下，不占布局（对齐官方 3D 的「纸种底色」） */
+/* 纸种浮层：挂在按钮组右下，不占布局 */
 .v3d-paper {
   position: absolute; right: 0; top: 34px; z-index: 4; width: 234px; padding: 11px 12px 12px;
   background: #fff; border: 1px solid var(--border-strong); border-radius: 12px;

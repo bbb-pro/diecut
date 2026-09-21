@@ -180,7 +180,7 @@
   var hvIso = hv ? hv.querySelector('.hvp-iso') : null;
   var hvFor = null, hvShowT = null, hvHideT = null;
 
-  /* 立体盒预览：用 packmage 官方 280×208 缩略图
+  /* 立体盒预览：用 280×208 缩略图
      三级兜底  本地 data/thumbs/ → 回源 online.packmage.cn → 离线矢量示意（极少走到） */
   var THUMB_LOCAL = 'data/thumbs/';
   var THUMB_REMOTE = 'https://online.packmage.cn/Content/boximg/';
@@ -204,7 +204,7 @@
       ? V2.svg(g, { pad: 12 })
       : '<div class="hvp-wait">展开图未加载</div>';
 
-    /* 左刀模 + 右官方立体图，即 V1「盒型参考图」的版式 */
+    /* 左刀模 + 右立体图，即 V1「盒型参考图」的版式 */
     hvIso.innerHTML = '';
     var img = document.createElement('img');
     img.className = 'hvp-thumb';

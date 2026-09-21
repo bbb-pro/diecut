@@ -378,16 +378,17 @@
     if (!vals.length) return null;
 
     var tol = Math.max(1.5, Math.min.apply(null, vals) * 0.10, Math.max.apply(null, vals) * 0.008);
-    var lines = axisLines((g.k && g.k.length) ? g.k : (g.c || []));
-    /* 有些盒型的压痕几乎全是斜线/弧线，抽不出几条正交线段（板界无从谈起）。
-       这种时候把切割线并进来 —— 外轮廓也是板界，代价是判定略松，但只在压痕极稀时才启用。 */
-    if (lines.V.length + lines.H.length < 6 && g.k && g.c && g.c.length) {
-      lines = axisLines(g.k.concat(g.c));
-    }
     var GTOL = Math.max(1.0, tol * 0.2);
-    var GX = boardGroups(lines.V, GTOL);      // 竖板界（k = x）
-    var GY = boardGroups(lines.H, GTOL);      // 横板界（k = y）
     var LIST = [['L', L], ['W', W], ['D', D]];
+    var GX, GY;                               // 竖/横板界，随下面 useLines() 换一组线而重算
+
+    /** 换一组多边形当板界并重算 GX/GY；返回正交线段条数（太少说明这套线撑不起板界） */
+    function useLines(polys) {
+      var ls = axisLines(polys);
+      GX = boardGroups(ls.V, GTOL);           // 竖板界（k = x）
+      GY = boardGroups(ls.H, GTOL);           // 横板界（k = y）
+      return ls.V.length + ls.H.length;
+    }
 
     /* 一个方向上的「带」：图幅边界 + 各板界坐标，相邻两两成带。
        关键点：展开图里同一个 x 可能只在上半区是折线、在下半区根本不是，
@@ -471,8 +472,6 @@
         }
       });
     }
-    scan('x');
-    scan('y');
 
     /** 匹配误差优先；误差相同时取「另一方向也是已知尺寸」的那块（更像真实的面） */
     function bestOf(list) {
@@ -490,30 +489,67 @@
 
     var out = { tol: tol, x: [], y: [] };
     var used = {};
-    ['L', 'W', 'D'].forEach(function (k) {
-      var c = bestOf(cand[k]);
-      if (!c) return;
-      var key = c.axis + '|' + c.a + '|' + c.c;
-      var prev = used[key];
-      if (prev) {
-        /* 两个尺寸落到同一段间距上（典型是正方盒 L=W）：
-           值相同 → 合并成「长·宽」；值不同 → 只留匹配更准的那条，绝不标错 */
-        if (Math.abs(prev.v - c.v) <= 0.15) {
-          prev.ks = prev.ks || [prev.k];
-          if (prev.ks.indexOf(k) < 0) prev.ks.push(k);
-        } else if (c.e + 1e-9 < prev.err) {
-          var arr = c.axis === 'x' ? out.x : out.y;
-          var idx = arr.indexOf(prev);
-          var it = makeItem(k, c);
-          if (idx >= 0) arr[idx] = it;
-          used[key] = it;
+    var placed = {};                  // L/W/D 是否已经有着落（含被合并的情形）
+
+    /**
+     * 跑一轮挑尺寸：先把候选扫出来，再逐一号入座。
+     * @param only    ['L','D'] 只补这几个尺寸；不传 = 三个都来
+     * @param keepOld true = 落到别人已占的位置就整条放弃（补回合专用，不抢第一轮的结果）
+     */
+    function pick(only, keepOld) {
+      cand = { L: [], W: [], D: [] };
+      scan('x');
+      scan('y');
+      ['L', 'W', 'D'].forEach(function (k) {
+        if (only && only.indexOf(k) < 0) return;
+        if (placed[k]) return;
+        var c = bestOf(cand[k]);
+        if (!c) return;
+        var key = c.axis + '|' + c.a + '|' + c.c;
+        var prev = used[key];
+        if (prev) {
+          /* 两个尺寸落到同一段间距上（典型是正方盒 L=W）：
+             值相同 → 合并成「长·宽」；值不同 → 只留匹配更准的那条，绝不标错 */
+          if (Math.abs(prev.v - c.v) <= 0.15) {
+            prev.ks = prev.ks || [prev.k];
+            if (prev.ks.indexOf(k) < 0) prev.ks.push(k);
+            placed[k] = true;
+          } else if (!keepOld && c.e + 1e-9 < prev.err) {
+            var arr = c.axis === 'x' ? out.x : out.y;
+            var idx = arr.indexOf(prev);
+            var it = makeItem(k, c);
+            if (idx >= 0) arr[idx] = it;
+            used[key] = it;
+            placed[k] = true;
+          }
+          return;
         }
-        return;
-      }
-      var item = makeItem(k, c);
-      used[key] = item;
-      (c.axis === 'x' ? out.x : out.y).push(item);
+        var item = makeItem(k, c);
+        used[key] = item;
+        placed[k] = true;
+        (c.axis === 'x' ? out.x : out.y).push(item);
+      });
+    }
+
+    var creases = (g.k && g.k.length) ? g.k : (g.c || []);
+    var nSeg = useLines(creases);
+    /* 有些盒型的压痕几乎全是斜线/弧线，抽不出几条正交线段（板界无从谈起）。
+       这种时候第一轮就把切割线一起算 —— 外轮廓也是板界，代价是判定略松。 */
+    if (nSeg < 6 && g.k && g.c && g.c.length) useLines(g.k.concat(g.c));
+
+    pick();
+
+    /* 补一轮：第一轮没能定位到的尺寸（最常见的就是缺「高」），把切割线也算作板界再试。
+       ❗ 只补落空的尺寸、且不许顶掉第一轮的结果 —— 所以 JP008 这类能多标出一条高，
+       而 E055/A038 这些三边本来就齐的一个都不会动。 */
+    var missed = ['L', 'W', 'D'].filter(function (k) {
+      var v = LIST.filter(function (p) { return p[0] === k; })[0][1];
+      return v && v >= 3 && !placed[k];
     });
+    if (missed.length && g.k && g.c && g.c.length) {
+      useLines(g.k.concat(g.c));
+      pick(missed, true);
+    }
 
     return out;
   };
