@@ -295,6 +295,16 @@
     TOOLS_2D.forEach(function (id) { var b = $(id); if (b) b.disabled = !!v; });
   }
 
+  /* ---------- 3D 纸种 / 颜色（跨盒型记住） ---------- */
+
+  var PAPER_KEY = 'V2.paper';
+  function onPaperChange(k) {
+    try { localStorage.setItem(PAPER_KEY, k); } catch (e) { /* 隐私模式忽略 */ }
+  }
+  function savedPaper() {
+    try { return localStorage.getItem(PAPER_KEY) || ''; } catch (e) { return ''; }
+  }
+
   function enter3D() {
     if (in3D || v3dBusy || no3D) return;
     in3D = true;
@@ -315,7 +325,10 @@
     v3dBusy = true;
     setStatus('', '正在加载 3D 立体视图…');
     import(v3dURL).then(function (m) {
-      v3d = m.create($('view3d'), fill3dFoot);
+      v3d = m.create($('view3d'), fill3dFoot, onPaperChange);
+      /* 纸种跨盒型记住：翻下一个盒型时还是同一张纸，观感连贯 */
+      var savedPk = savedPaper();
+      if (savedPk) v3d.setPaper(savedPk);
       v3d.setVisible(true);
       return v3dStale ? refresh3D(true) : v3d.load(ID);
     }).then(function () {
@@ -519,14 +532,24 @@
       ? lv0.map(paramHtml).join('')
       : '<div style="font-size:12.5px;color:var(--muted)">该盒型无额外外观参数</div>';
 
-    var adv = (G.p || []).filter(function (p) { return p.l === 1 || p.l === 2; });
-    $('advParams').innerHTML = adv.length
-      ? adv.map(paramHtml).join('')
-      : '<div style="font-size:12.5px;color:var(--muted)">无</div>';
+    /* 高级参数：官方 PmItems 按 Layer 分组（1..6），分层列出才好找 */
+    var adv = (G.p || []).filter(function (p) { return p.l >= 1; });
+    if (adv.length) {
+      var byL = {};
+      adv.forEach(function (p) { (byL[p.l] = byL[p.l] || []).push(p); });
+      $('advParams').innerHTML = Object.keys(byL).sort(function (a, b) { return a - b; })
+        .map(function (L) {
+          return '<div class="param-layer"><span>第 ' + L + ' 层</span></div>'
+            + byL[L].map(paramHtml).join('');
+        }).join('');
+    } else {
+      $('advParams').innerHTML = '<div style="font-size:12.5px;color:var(--muted)">无</div>';
+    }
     $('advWrap').style.display = adv.length ? '' : 'none';
 
-    document.querySelectorAll('.param input').forEach(function (inp) {
-      inp.addEventListener('input', function () {
+    document.querySelectorAll('.param input, .param select').forEach(function (inp) {
+      var ev = inp.tagName === 'SELECT' ? 'change' : 'input';
+      inp.addEventListener(ev, function () {
         ceLive[this.dataset.n] = this.value;
         compute();
         renderInfo();
@@ -534,12 +557,23 @@
     });
   }
 
+  /* 官方 DownList 参数（如「左右插孔数」1/2/3）渲染成下拉，其余仍是数字输入 */
   function paramHtml(p) {
     var label = p.d || C.labels[p.n] || p.n;
+    var n = V2.esc(p.n);
+    var body;
+    if (p.dl && p.dl.length) {
+      /* dl: [{v: 传回后端的值, t: 显示文案}]，如 [{v:'1',t:'暗扣'},{v:'2',t:'锁扣'}] */
+      body = '<select data-n="' + n + '">' + p.dl.map(function (o) {
+        return '<option value="' + V2.esc(o.v) + '"'
+          + (String(o.v) === String(p.v) ? ' selected' : '') + '>' + V2.esc(o.t) + '</option>';
+      }).join('') + '</select>';
+    } else {
+      body = '<input type="number" step="any" data-n="' + n + '" value="' + V2.esc(p.v) + '">';
+    }
     return '<div class="param">' +
-      '<label title="' + V2.esc(p.n) + '">' + V2.esc(label) + '</label>' +
-      '<input type="number" step="any" data-n="' + V2.esc(p.n) + '" value="' + V2.esc(p.v) + '">' +
-      '</div>';
+      '<label title="' + n + '">' + V2.esc(label) + '</label>' +
+      body + '</div>';
   }
 
   /* ==================== 信息卡 ==================== */

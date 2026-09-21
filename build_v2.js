@@ -277,6 +277,7 @@ function main() {
       const lb = p.d || labelMap[p.n];
       if (lb) o.d = String(lb);
       if (!isUnitless(p.n)) o.u = 1;
+      if (p.dl && p.dl.length) o.dl = p.dl;   // 官方 DownList（如「左右插孔数」1/2/3）
       return o;
     });
 

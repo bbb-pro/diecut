@@ -282,21 +282,49 @@ const DWELL_MS = 2000;      // 首末帧停留
 
 function speedToMs(v) { return Math.round(SPEED_SLOW + (SPEED_FAST - SPEED_SLOW) * v / 100); }
 
+/* ---------- 纸材质（官方 3D 面板的「纸种底色」）
+
+   官方 cad.packmage.cn 的 3D 里，所谓「颜色设置」其实是**预置材质贴图**：
+     /Images/Cad/Paper/{wa,niu,jin,yin,qing,pink,red}_A.jpg
+   已随站点下载到 assets/mat/（本地自带，离线可用，不依赖上游）。
+
+   UV 直接取**展开图 2D 坐标 ÷ TEX_MM**：
+   折叠是刚体变换，同一顶点的 UV 不变 → 贴图等于「印在同一张纸上」，
+   折起来纹理跟着面板走，不会在折痕处撕开错位。 */
+const TEX_MM = 160;         // 一张贴图代表 160mm 见方的纸面
+const MAT_BASE = 'assets/mat/';
+const PAPERS = [
+  { k: 'plain', name: '纸板原色' },
+  { k: 'wa',    name: '瓦楞纸', file: 'paper_wa_A.jpg' },
+  { k: 'niu',   name: '牛皮纸', file: 'paper_niu_A.jpg' },
+  { k: 'jin',   name: '金卡纸', file: 'paper_jin_A.jpg' },
+  { k: 'yin',   name: '银卡纸', file: 'paper_yin_A.jpg' },
+  { k: 'qing',  name: '青色纸', file: 'paper_qing_A.jpg' },
+  { k: 'pink',  name: '粉色纸', file: 'paper_pink_A.jpg' },
+  { k: 'red',   name: '红色纸', file: 'paper_red_A.jpg' },
+];
+
 /* ---------- 视图实例 ---------- */
 
 /**
  * @param host  容器元素（绝对定位铺满的中栏画布）
  * @param onInfo 数据加载完成后的回调：({id, planes, hinges, comps, size, tris})
+ * @param onPaper 纸种/颜色变化回调：(k) —— 上层用来持久化
  */
-export function create(host, onInfo) {
+export function create(host, onInfo, onPaper) {
   host.innerHTML =
     '<div class="v3d-stage"></div>' +
     /* 视角类放画布右上角（动画类放底部条）—— 两类操作分开，底栏就不用挤成一条 */
     '<div class="v3d-hud">' +
       '<span class="v3d-chip">加载中…</span>' +
       '<div class="v3d-viewbtns">' +
+        '<button class="v3d-btn v3d-paper-t" type="button" aria-haspopup="true" aria-expanded="false"'
+          + ' title="换纸张材质 / 盒体颜色（纸样取自官方素材）">纸种 ⌄</button>' +
         '<button class="v3d-btn v3d-rot" type="button" title="让模型自己慢慢转圈，方便看背面">自动旋转</button>' +
         '<button class="v3d-btn v3d-home" type="button" title="回到刚进来时的视角（不改动自动折叠 / 自动旋转的开关）">复位视角</button>' +
+        '<button class="v3d-btn v3d-gridb" type="button" aria-pressed="true"'
+          + ' title="显示 / 隐藏脚下的地面网格（选择会记住）">网格</button>' +
+        '<div class="v3d-paper" hidden></div>' +
       '</div>' +
     '</div>' +
     '<div class="v3d-bar">' +
@@ -320,6 +348,15 @@ export function create(host, onInfo) {
   const homeBtn = host.querySelector('.v3d-home');
   const rotBtn = host.querySelector('.v3d-rot');
   const spd = host.querySelector('.v3d-spd');
+  const paperBtn = host.querySelector('.v3d-paper-t');
+  const paperPop = host.querySelector('.v3d-paper');
+  const gridBtn = host.querySelector('.v3d-gridb');
+
+  /* 网格开关（纯视图偏好，自己存自己读，不必上层转一手） */
+  const GRID_KEY = 'V2.v3dGrid';
+  function readGridPref() {
+    try { return localStorage.getItem(GRID_KEY) !== '0'; } catch (e) { return true; }
+  }
 
   let THREE = null, OrbitControls = null;
   let renderer = null, scene = null, camera = null, controls = null, grid = null;
@@ -329,6 +366,7 @@ export function create(host, onInfo) {
      hold:    端点停留剩余毫秒（>0 时不动，数完掉头） */
   let playing = 0, hold = 0, legMs = speedToMs(SPEED_DEF);
   let wasPlaying = 0;               // 切去 2D 时正在播的那个方向，回来时接上
+  let gridOn = readGridPref();      // 地面网格显隐（读数在 readGridPref 里做兜底）
   let home = null, info = null, bbox = null, mainComp = -1;
 
   /* ---------- 渲染器（首次需要时创建） ---------- */
@@ -392,9 +430,56 @@ export function create(host, onInfo) {
     grid = new THREE.GridHelper(4000, 40, 0xd7dce4, 0xe6eaf0);
     grid.material.transparent = true;
     grid.material.opacity = 0.75;
+    grid.visible = gridOn;         // ❗ 首次建好就按记忆应用，否则每次进 3D 都会先闪一下网格
     scene.add(grid);
+    syncGrid();
 
     return true;
+  }
+
+  /* ---------- 纸材质：官方 3D 面板的「纸种底色」 ---------- */
+
+  const texCache = {};
+  let curPaper = 'plain', curTint = null;
+
+  function paperTexture(file) {
+    if (texCache[file]) return texCache[file];
+    const t = new THREE.TextureLoader().load(MAT_BASE + file);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;   // 按 mm 平铺，必须能重复
+    t.anisotropy = 4;
+    if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
+    texCache[file] = t;
+    return t;
+  }
+
+  /* 把当前纸种套到全部面板材质。
+     ❗ 不论贴图还是纯色，都按面板序号留一点明暗差 ——
+     所有面完全同色时，折起来分不清哪块是哪块。 */
+  function applyPaper() {
+    if (!mats.length) return;
+    let tex = null;
+    for (let d = 0; d < PAPERS.length; d++) {
+      if (PAPERS[d].k === curPaper && PAPERS[d].file) { tex = paperTexture(PAPERS[d].file); break; }
+    }
+    for (let i = 0; i < mats.length; i++) {
+      const m = mats[i];
+      const lvl = 1 - (i % 5) * 0.030;          // 0.88 ~ 1.00
+      if (tex) {
+        m.map = tex;
+        m.color.setScalar(lvl);                  // 压暗贴图，保留面的层次
+      } else {
+        m.map = null;
+        if (curTint) {
+          const c = new THREE.Color(curTint), h = { h: 0, s: 0, l: 0 };
+          c.getHSL(h);
+          m.color.setHSL(h.h, h.s, Math.max(0.06, Math.min(0.94, h.l * lvl)));
+        } else {
+          m.color.setHSL(0.09 + (i % 7) * 0.010, 0.30, 0.66 - (i % 5) * 0.030);
+        }
+      }
+      m.needsUpdate = true;
+    }
+    if (renderer) render();
   }
 
   /* ---------- 载入 / 重建 ---------- */
@@ -440,6 +525,12 @@ export function create(host, onInfo) {
       if (!p.v.length || !p.f.length) continue;
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(p.v.length / 2 * 3), 3));
+      /* UV 直接取展开图 2D 坐标 ÷ TEX_MM：
+         折叠是刚体变换，同一顶点的 UV 恒定不变 → 贴图等于「印在同一张纸上」，
+         折起来纹理跟着面板走，折痕两侧不会错位撕裂。 */
+      const uv = new Float32Array(p.v.length);
+      for (let k = 0; k < p.v.length; k++) uv[k] = p.v[k] / TEX_MM;
+      geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
       geo.setIndex(p.f.slice());
       const mat = new THREE.MeshStandardMaterial({
         /* 纸板色：暖调，面板之间轻微错开明度，折起来才看得清都是哪些面 */
@@ -459,6 +550,7 @@ export function create(host, onInfo) {
     applyProgress(1, true);         // 先把顶点写进去（否则包围盒退化成一个点）
     fitCamera();
     geoNormalsOnce();
+    applyPaper();                   // 重建后把当前纸种贴回去
   }
 
   function geoNormalsOnce() {
@@ -643,11 +735,93 @@ export function create(host, onInfo) {
     playBtn.classList.remove('on');
   }
 
+  /* ---------- 纸种浮层 ---------- */
+
+  paperPop.innerHTML =
+    '<div class="v3d-paper-hd">纸张材质<em>官方纸样</em></div>' +
+    '<div class="v3d-paper-grid">' +
+      PAPERS.map(function (p) {
+        return '<button type="button" class="v3d-sw" data-k="' + p.k + '" title="' + p.name + '"'
+          + (p.file ? ' style="background-image:url(' + MAT_BASE + p.file + ')"' : '') + '>'
+          + (p.file ? '' : '<i></i>') + '</button>';
+      }).join('') +
+    '</div>' +
+    '<label class="v3d-paper-ct"><input type="color" value="#c8a273"><span>自定义颜色</span></label>';
+
+  /* 选中态由这里统一刷（点色块 / 取色器 / 上层恢复记忆都走它） */
+  function syncSw() {
+    const cur = api.paper();
+    const btns = paperPop.querySelectorAll('.v3d-sw');
+    for (let i = 0; i < btns.length; i++) btns[i].classList.toggle('on', btns[i].dataset.k === cur);
+    const ct = paperPop.querySelector('input[type=color]');
+    const isHex = cur.charAt(0) === '#';
+    ct.parentNode.classList.toggle('on', isHex);
+    if (isHex) ct.value = cur;
+  }
+
+  paperPop.addEventListener('click', function (e) {
+    const b = e.target.closest && e.target.closest('.v3d-sw');
+    if (!b) return;
+    api.setPaper(b.dataset.k);
+    if (onPaper) onPaper(api.paper());
+  });
+  paperPop.querySelector('input[type=color]').addEventListener('input', function () {
+    api.setPaper(this.value);
+    if (onPaper) onPaper(api.paper());
+  });
+
+  paperBtn.addEventListener('click', function (e) {
+    e.stopPropagation();                 // 否则冒到 document 立刻又被关掉
+    paperPop.hidden = !paperPop.hidden;
+    paperBtn.setAttribute('aria-expanded', String(!paperPop.hidden));
+  });
+  document.addEventListener('click', function () {
+    if (!paperPop.hidden) { paperPop.hidden = true; paperBtn.setAttribute('aria-expanded', 'false'); }
+  });
+
+  /* ---------- 地面网格开关 ---------- */
+
+  /* 按钮态与网格显隐都由这里统一刷（点按钮 / 上层恢复记忆都走它） */
+  function syncGrid() {
+    if (grid) grid.visible = gridOn;
+    gridBtn.classList.toggle('on', gridOn);
+    gridBtn.setAttribute('aria-pressed', String(gridOn));
+    gridBtn.title = (gridOn ? '隐藏' : '显示') + '脚下的地面网格（选择会记住）';
+  }
+
+  gridBtn.addEventListener('click', function () { api.setGrid(!gridOn); });
+
   /* ---------- 对外 ---------- */
 
   const api = {
     visible: function () { return visible; },
     info: function () { return info; },
+
+    /**
+     * 纸种 / 颜色
+     * @param k 'plain' 纸板原色 | 'wa'|'niu'|'jin'|'yin'|'qing'|'pink'|'red' 预设纸 | '#rrggbb' 自定义色
+     * 传色值时忽略第 2 参。
+     */
+    setPaper: function (k, tint) {
+      if (k && k.charAt(0) === '#') { curPaper = 'plain'; curTint = k; }
+      else { curPaper = k || 'plain'; curTint = tint || null; }
+      applyPaper();
+      syncSw();
+      return api;
+    },
+    paper: function () { return curTint || curPaper; },
+    papers: function () {
+      return PAPERS.map(function (p) { return { k: p.k, name: p.name, file: p.file || null }; });
+    },
+
+    /** 地面网格显隐（不传参则取反）；选择写进本地记忆，下次进 3D 沿用 */
+    setGrid: function (v) {
+      gridOn = (v == null) ? !gridOn : !!v;
+      syncGrid();
+      try { localStorage.setItem(GRID_KEY, gridOn ? '1' : '0'); } catch (e) { /* 隐私模式忽略 */ }
+      return api;
+    },
+    grid: function () { return gridOn; },
 
     setVisible: function (v) {
       visible = !!v;
@@ -763,6 +937,7 @@ export function create(host, onInfo) {
       return {
         t: r2(t), playing: playing, hold: Math.round(hold),
         legMs: legMs, dwell: DWELL_MS,
+        grid: gridOn,
         autoRotate: !!(controls && controls.autoRotate)
       };
     },

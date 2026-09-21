@@ -488,7 +488,16 @@ button, input, select { font-family: inherit; font-size: inherit; color: inherit
   border: 1px solid var(--border-strong); border-radius: 8px;
   background: var(--surface-2); outline: none; font-variant-numeric: tabular-nums;
 }
-.param input:focus { background: #fff; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+.param input:focus, .param select:focus { background: #fff; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-weak); }
+.param select { cursor: pointer; appearance: none; padding-right: 22px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 8px center; }
+
+/* 高级参数按官方 Layer 分组，组标题做成分隔行 */
+.param-layer { display: flex; align-items: center; gap: 8px; margin: 12px 0 2px; }
+.param-layer:first-child { margin-top: 0; }
+.param-layer span { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .3px; white-space: nowrap; }
+.param-layer::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
 details.adv { margin-top: 14px; border-top: 1px dashed var(--border); padding-top: 12px; }
 details.adv summary {
@@ -765,6 +774,10 @@ details.adv .field-group { margin-top: 12px; }
   .v3d-bar { flex-wrap: wrap; row-gap: 6px; }
   .v3d-spd { flex: 1 1 70px !important; }
   .v3d-lab { font-size: 11px; }
+  /* 窄屏：右上按钮已 4 个，连同状态条一排排不下 → 允许各自折行 */
+  .v3d-hud { flex-wrap: wrap; row-gap: 6px; }
+  .v3d-viewbtns { flex-wrap: wrap; justify-content: flex-end; }
+  .v3d-paper { width: min(234px, calc(100vw - 40px)); }
 }
 
 @media (max-width: 640px) {
@@ -900,8 +913,39 @@ details.adv .field-group { margin-top: 12px; }
 }
 .v3d-chip b { color: var(--text); font-weight: 600; }
 /* hud 整条不吃事件（否则会挡住拖拽旋转），只把按钮那一段放出来 */
-.v3d-viewbtns { margin-left: auto; display: flex; gap: 8px; pointer-events: auto; }
+.v3d-viewbtns { margin-left: auto; display: flex; gap: 8px; pointer-events: auto; position: relative; }
 .v3d-viewbtns .v3d-btn { height: 28px; background: rgba(255, 255, 255, .92); box-shadow: var(--shadow); }
+.v3d-paper-t[aria-expanded="true"] { background: var(--accent-weak) !important; border-color: #bcd0ff; color: var(--accent-dark); font-weight: 600; }
+
+/* 纸种浮层：挂在按钮组右下，不占布局（对齐官方 3D 的「纸种底色」） */
+.v3d-paper {
+  position: absolute; right: 0; top: 34px; z-index: 4; width: 234px; padding: 11px 12px 12px;
+  background: #fff; border: 1px solid var(--border-strong); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(16, 24, 40, .16); text-align: left;
+}
+.v3d-paper-hd { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 9px; }
+.v3d-paper-hd em { font-style: normal; font-size: 10.5px; font-weight: 400; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+.v3d-paper-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.v3d-sw {
+  position: relative; padding: 0; cursor: pointer; aspect-ratio: 1 / 1;
+  border: 1px solid var(--border-strong); border-radius: 8px;
+  background: var(--surface-2) center / cover no-repeat;
+}
+.v3d-sw i { display: block; width: 100%; height: 100%; border-radius: 7px;
+  background: linear-gradient(135deg, #ecd6b8 0%, #d8b184 55%, #c39a67 100%); }
+.v3d-sw:hover { border-color: #a9b4c6; }
+.v3d-sw.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-weak); }
+.v3d-sw.on::after {
+  content: '✓'; position: absolute; right: 3px; bottom: 1px; font-size: 11px;
+  color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .75);
+}
+.v3d-paper-ct { display: flex; align-items: center; gap: 8px; margin-top: 11px; font-size: 12px; color: var(--text-2); cursor: pointer; }
+.v3d-paper-ct input[type=color] {
+  width: 38px; height: 26px; padding: 0; cursor: pointer;
+  border: 1px solid var(--border-strong); border-radius: 6px; background: none;
+}
+.v3d-paper-ct.on { color: var(--accent-dark); font-weight: 600; }
+.v3d-paper-ct.on input[type=color] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-weak); }
 
 .v3d-bar {
   position: absolute;

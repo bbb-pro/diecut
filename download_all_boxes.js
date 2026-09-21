@@ -172,7 +172,7 @@ function fetchBox(boxID) {
               op: d.de.OutPms,
             },
             ce: d.ce,
-            pm: cadData.PmItems || [],
+            pm: normPm(cadData.PmItems, d.ce),
             fe: d.fe,
           });
         } catch (e) {
@@ -184,6 +184,37 @@ function fetchBox(boxID) {
     req.setTimeout(TIMEOUT, () => { req.destroy(); resolve(null); });
     req.write(postData);
     req.end();
+  });
+}
+
+/** 官方 PmItems（Name/Desc/DefaultV/DownList/Layer）→ 站内紧凑格式 {n,d,v,l,dl}
+ *  - v 优先取该盒 ce 里的**实际值**（ce 是 "l=300,w=200,…" 字符串），没有才用 DefaultV
+ *  - ❗ DownList 的 **key（去掉下划线）才是要传回后端的数值**，value 只是显示文案，
+ *    所以必须存成 [{v,t}]，只取文本会把「上插舌样式=2」变成「锁扣」这种非数值，
+ *    回传求解时直接被上游当非法参数 */
+function normPm(items, ceStr) {
+  const ce = {};
+  String(ceStr || '').split(',').forEach((kv) => {
+    const i = kv.indexOf('=');
+    if (i > 0) ce[kv.slice(0, i).trim().toLowerCase()] = kv.slice(i + 1).trim();
+  });
+  return (items || []).filter((it) => it && it.Name).map((it) => {
+    const n = String(it.Name).toLowerCase();
+    const o = { n: n, l: it.Layer || 0, d: it.Desc || '' };
+    const v = ce[n];
+    if (v != null && v !== '') {
+      const num = parseFloat(v);
+      o.v = isFinite(num) && String(num) === v ? num : v;
+    } else {
+      o.v = it.DefaultV == null ? '' : it.DefaultV;
+    }
+    if (it.DownList) {
+      o.dl = Object.entries(it.DownList).map(([k, val]) => ({
+        v: String(k).replace(/^_/, '').trim(),
+        t: String(val).trim(),
+      })).sort((a, b) => (parseFloat(a.v) || 0) - (parseFloat(b.v) || 0));
+    }
+    return o;
   });
 }
 
@@ -247,9 +278,14 @@ async function main() {
   const allBoxes = {};
   for (const id of Object.keys(localBoxes)) if (newIds.has(id)) allBoxes[id] = localBoxes[id];
 
-  const missing = catalog.map((c) => c.id).filter((id) => !allBoxes[id]);
+  /* 要抓的有两类：
+     ① 本地没有几何的盒型
+     ② 几何有、但参数表（pm）为空的 —— 老快照当年抓到的是空 PmItems，
+        上游现在每盒都返回 18~80 项参数，按这条补上，否则参数面板永远是空的 */
+  const missing = catalog.map((c) => c.id)
+    .filter((id) => !allBoxes[id] || !((allBoxes[id].pm || []).length));
   const targets = FORCE ? catalog.map((c) => c.id) : missing;
-  log('需要抓取几何: ' + targets.length + ' 个' + (FORCE ? '（--force 全量重下）' : '（本地缺几何的盒型）'));
+  log('需要抓取: ' + targets.length + ' 个' + (FORCE ? '（--force 全量重下）' : '（缺几何或缺参数表的盒型）'));
 
   /* --- 4) 抓几何 --- */
   let ok = 0;
