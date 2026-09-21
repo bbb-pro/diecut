@@ -15,6 +15,7 @@
   var dims = { L: null, W: null, D: null };  // 统一以「制造尺寸 mm」存储
   var ceLive = null;     // 当前生效的参数值
   var S = null;          // 尺寸计算结果
+  var dimMode = null;    // 长/宽/高 各自能否编辑（见 V2.dimControl）
 
   var $ = function (id) { return document.getElementById(id); };
 
@@ -56,6 +57,7 @@
     renderHead();
     renderCanvas();
     renderPanel();
+    syncDimLock();
     renderInfo();
     renderRelated();
     renderTags();
@@ -502,15 +504,51 @@
     ['L', 'W', 'D'].forEach(function (k) {
       var inp = $('dim' + k);
       var v = sizeVal(k);
+      /* 盒型没有这一维时（ce 里是 0 或干脆没有），别把 0 显示出来 */
+      if (dimMode && dimMode[k].mode === 'none') v = null;
       inp.value = v == null ? '' : V2.unitVal(v, unit);
-      inp.placeholder = '—';
+      inp.placeholder = (dimMode && dimMode[k].mode === 'none') ? '不含此项' : '—';
     });
     document.querySelectorAll('.dim-unit').forEach(function (el) { el.textContent = unit; });
+  }
+
+  /**
+   * 不可单独调整的尺寸（宽跟随长 / 由结构推算 / 盒型没有这一维）做成只读并写明原因。
+   *
+   * 背景：某些盒型根本没有「宽」这个参数（如 JP008 的求解串只有 长/高/高2），
+   * 输入框看着能改、本地数字也会变，但回传后上游直接忽略它 —— 几何纹丝不动。
+   * 与其让人反复试、怀疑是不是网站坏了，不如直接锁上并把原因写在下面。
+   */
+  function syncDimLock() {
+    dimMode = V2.dimControl(G);
+    ['L', 'W', 'D'].forEach(function (k) {
+      var d = dimMode[k];
+      var inp = $('dim' + k);
+      var tag = $('tag' + k);
+      if (!inp || !tag) return;
+      var lock = d.mode !== 'edit';
+      inp.readOnly = lock;
+      inp.classList.toggle('is-lock', lock);
+      var txt = lock ? V2.dimLockText(k, d) : '';
+      tag.textContent = txt;
+      tag.hidden = !txt;
+      inp.title = txt;
+    });
+    renderDims();   // 可能要把「不含此项」那格的 0 / 旧值清掉
+  }
+
+  /** 改了别的尺寸、上游重算回来后，把只读尺寸同步成新值（方盒的宽会跟着长一起变） */
+  function syncLockedDims() {
+    ['L', 'W', 'D'].forEach(function (k) {
+      if (!dimMode || dimMode[k].mode === 'edit') return;
+      dims[k] = numOr(G.ce[k.toLowerCase()]);
+    });
   }
 
   function bindDimInputs() {
     ['L', 'W', 'D'].forEach(function (k) {
       $('dim' + k).addEventListener('input', function () {
+        if (dimMode && dimMode[k].mode !== 'edit') return;   // 只读项：万一被脚本塞值也拦住
         var raw = parseFloat(this.value);
         if (!isFinite(raw)) return;
         var mm = unit === 'in' ? raw / V2.MM2IN : raw;
@@ -851,8 +889,13 @@
           cal: G.cal
         };
         ceLive = Object.assign({}, G.ce, { cal: ceLive.cal });
+        /* 只读尺寸要先按上游回来的新 ce 更新，再算、再画 —— 否则方盒改了长，
+           宽的输入框还停在旧值上，看着就像「改了没反应」。 */
+        syncLockedDims();
+        syncDimLock();
         invalidateFaces();
         compute();
+        renderDims();
         renderCanvas();
         renderInfo();
         setStatus('ok', '已按新尺寸求解（展开 ' + V2.num((G.b[2] - G.b[0])) + ' × ' + V2.num((G.b[3] - G.b[1])) + ' mm）');

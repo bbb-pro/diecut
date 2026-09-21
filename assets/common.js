@@ -721,6 +721,56 @@
   function r2(v) { return Math.round(v * 100) / 100; }
   V2.r2 = r2;
 
+  /* ---------------- 主尺寸能不能改 ---------------- */
+
+  V2.DIM_CN = { L: '长', W: '宽', D: '高' };
+
+  /**
+   * 长/宽/高 是否允许用户直接改。
+   *
+   * ❗ 判据是 **`op`（求解参数串）而不是 `pm`（参数表）**：
+   *    改尺寸时回传的就是 op 那串（`buildPms()` 照它的 key 拼），op 里没有的 key
+   *    上游会直接忽略 —— 于是输入框看着能改、数字本地也变了，几何却纹丝不动。
+   *
+   * 四种情况：
+   *   edit    op 里有这一维，正常可改
+   *   follow  op 里没有，但值和另一个可改的主尺寸相等（方盒：宽 = 长）→ 跟着它走
+   *   auto    op 里没有，值由盒型结构推算出来（如高由「高1 + 高2」合成）→ 只能看
+   *   none    这个盒型压根没有这一维（ce 里连值都没有）→ 显示「不含此项」
+   */
+  V2.dimControl = function (g) {
+    var op = {};
+    String((g && g.op) || '').split(',').forEach(function (kv) {
+      var i = kv.indexOf('=');
+      if (i > 0) op[kv.slice(0, i).trim().toUpperCase()] = 1;
+    });
+    var ce = (g && g.ce) || {};
+    var out = {};
+    ['L', 'W', 'D'].forEach(function (K) {
+      var raw = ce[K.toLowerCase()];
+      if (op[K]) { out[K] = { mode: 'edit' }; return; }
+      var b = parseFloat(raw);
+      /* 值为空或 0 都算「没有这一维」——宽为 0 的盒型（如 H009）实质是片状结构 */
+      if (!(b > 0)) { out[K] = { mode: 'none' }; return; }
+      var by = null;
+      ['L', 'W', 'D'].forEach(function (J) {
+        if (J === K || !op[J] || by) return;
+        var a = parseFloat(ce[J.toLowerCase()]);
+        if (isFinite(a) && Math.abs(a - b) < 0.05) by = J;
+      });
+      out[K] = by ? { mode: 'follow', by: by } : { mode: 'auto' };
+    });
+    return out;
+  };
+
+  /** 锁定的输入框下面那句说明（follow/auto/none 三种）；K = 'L'|'W'|'D' */
+  V2.dimLockText = function (K, d) {
+    if (d.mode === 'follow') return '与' + V2.DIM_CN[d.by] + '相同，改' + V2.DIM_CN[d.by] + '就会跟着变';
+    if (d.mode === 'auto') return V2.DIM_CN[K] + '由盒型结构推算，不可单独调整';
+    if (d.mode === 'none') return '此盒型不含' + V2.DIM_CN[K];
+    return '';
+  };
+
   /* ---------------- 盒型显示名 ---------------- */
 
   /* ❗ 源站把 SEO 关键词当盒型名抓下来了（约占全库四成），
