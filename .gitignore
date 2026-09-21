@@ -31,10 +31,14 @@ screenshots/
 _srv.js
 *.bak.s1
 test_*.png
-_*.js
-_*.png
-_*.txt
-_*.json
+
+# 临时脚本 / 探针 / 中间产物一律 `_` 前缀 → 整类忽略
+# （原来只写了 _*.js/_*.png/_*.txt/_*.json，漏掉 .mjs/.html/.glb/.py 等，
+#  导致 git status 里堆了 110+ 条噪音；仓库里没有任何 `_` 开头的正式文件）
+_*
 
 # 本地备份目录（绝不入库；同步工作流的 git add 也因此不会误带）
 _backup_*/
+
+# 本地验证用的 three.js 副本（离线跑 _3d_check.html，不入库）
+_three/

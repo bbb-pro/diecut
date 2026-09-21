@@ -28,6 +28,16 @@
 
 * { box-sizing: border-box; }
 
+/*
+  ❗[hidden] 必须真的隐藏。
+  UA 样式表里的 `[hidden] { display: none }` 特异性 0,1,0 —— 作者样式里任何一条
+  `.foo { display: flex }` 都会盖过它（作者样式整体优先于 UA 样式，与特异性无关）。
+  踩过的坑：3D 视图的 `.v3d-msg`（position:absolute; inset:0; display:flex）加载成功后
+  虽然设了 hidden，却仍然 transparent 地铺满整个舞台，把所有鼠标事件全部吃掉
+  —— 表现就是「3D 画面出来了，但拖不动、滚不动」。
+*/
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -522,6 +532,56 @@ details.adv .field-group { margin-top: 12px; }
 .legend i { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--cut); vertical-align: middle; margin-right: 5px; }
 .legend .lg-crease i { border-top: 2px dashed var(--crease); }
 
+/* 中栏容器：只作定位锚点（视图切换条要浮到卡片上沿之外，靠它当参照） */
+.canvas-col { position: relative; min-width: 0; }
+
+/*
+  视图切换条 =「文件夹标签」，照官方那套：
+  标签挂在「有边框的内容盒」【外面】正上方，激活项去掉下边框 + 白底，
+  把卡片上边框那 1px 吃掉，看起来跟卡片连成一体（官方的 li.active{border-bottom:0} 就是这个意思）。
+  几何：条高 34、上移 33 → 底边正好落在卡片上边框（1px）上。
+*/
+.view-switch {
+  position: absolute;
+  left: 14px;
+  top: -33px;
+  height: 34px;
+  z-index: 2;                 /* 必须在卡片之上，否则那 1px 白边压不住卡片边框 */
+  display: flex;
+  align-items: flex-end;
+}
+.seg-view {
+  flex: none;
+  width: auto;
+  display: flex;
+  grid-auto-columns: auto;
+  gap: 2px;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
+}
+/* 下边 1px 用 inset 阴影画：非激活=分隔线色，激活=白色（抹掉卡片上边框做出「开口」） */
+.seg-view button {
+  height: 34px;
+  padding: 0 17px;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: 9px 9px 0 0;
+  background: #eef0f4;
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+.seg-view button:hover { background: #e6e9ef; color: var(--text); }
+.seg-view button.on {
+  background: #fff;
+  color: var(--accent-dark);
+  font-weight: 600;
+  box-shadow: inset 0 -1px 0 #fff;
+}
+.seg-view button:disabled { color: var(--muted); cursor: default; }
+
 /* 画布：固定视窗高度，内容用 margin:auto 居中；放大后由 .canvas 自身滚动 */
 .canvas {
   position: relative;
@@ -581,7 +641,29 @@ details.adv .field-group { margin-top: 12px; }
 .legend .lg-mk { display: inline-flex; align-items: center; gap: 4px; }
 .legend .lg-mk i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin: 0; border: 0; }
 
-/* 导出卡片 */
+/* 导出：顶栏一个按钮，点开的格式面板浮在它下方 */
+.exp-menu { position: relative; }
+.exp-caret { opacity: .55; }
+.exp-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 2;                 /* 顶栏自身 z-index 50，抬一下确保压住下面的卡片 */
+  width: min(306px, calc(100vw - 40px));
+  padding: 10px 11px 11px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  box-shadow: var(--shadow-lg);
+  text-align: left;
+}
+.exp-pop-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  margin-bottom: 8px; font-size: 11.5px; color: var(--muted);
+}
+.exp-pop-head span:first-child { color: var(--text-2); font-weight: 600; }
+
+/* 导出格式按钮 */
 .exp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .exp-btn {
   display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
@@ -669,6 +751,20 @@ details.adv .field-group { margin-top: 12px; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
   .canvas { height: 58vh; min-height: 280px; }
   .canvas-inner { padding: 14px; }
+  /* 单列时上面只有面包屑、没有横向余量 → 切换条改回「在流内」，
+     免得绝对定位浮上去压到面包屑文字；-1px 下边距保持那点「贴住卡片」的连接感 */
+  .view-switch {
+    position: relative;
+    left: auto;
+    top: auto;
+    height: auto;
+    margin-bottom: -1px;
+  }
+  .seg-view button { height: 32px; padding: 0 14px; font-size: 12px; }
+  /* 窄屏：3D 底栏允许折行，否则进度条会被压到没法拖 */
+  .v3d-bar { flex-wrap: wrap; row-gap: 6px; }
+  .v3d-spd { flex: 1 1 70px !important; }
+  .v3d-lab { font-size: 11px; }
 }
 
 @media (max-width: 640px) {
@@ -777,3 +873,86 @@ details.adv .field-group { margin-top: 12px; }
   color: var(--muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+/* ===================== 详情页 · 3D 立体视图 ===================== */
+
+/* 切到 3D 时中栏不再滚动（滚轮交给 OrbitControls 缩放），展开图整块让位 */
+.canvas.is-3d { overflow: hidden; display: block; }
+.canvas.is-3d .canvas-inner { display: none; }
+
+.view3d { position: absolute; inset: 0; display: none; }
+.canvas.is-3d .view3d { display: block; }
+
+.v3d-stage { position: absolute; inset: 0; cursor: grab; }
+.v3d-stage.is-drag { cursor: grabbing; }
+.v3d-stage canvas { display: block; width: 100% !important; height: 100% !important; touch-action: none; }
+
+.v3d-hud { position: absolute; left: 12px; top: 12px; right: 12px; display: flex; gap: 8px; pointer-events: none; }
+.v3d-chip {
+  background: rgba(255, 255, 255, .88);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  box-shadow: var(--shadow);
+}
+.v3d-chip b { color: var(--text); font-weight: 600; }
+/* hud 整条不吃事件（否则会挡住拖拽旋转），只把按钮那一段放出来 */
+.v3d-viewbtns { margin-left: auto; display: flex; gap: 8px; pointer-events: auto; }
+.v3d-viewbtns .v3d-btn { height: 28px; background: rgba(255, 255, 255, .92); box-shadow: var(--shadow); }
+
+.v3d-bar {
+  position: absolute;
+  left: 12px; right: 12px; bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .9);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  color: var(--text-2);
+}
+.v3d-bar input[type=range] { flex: 1 1 auto; min-width: 90px; accent-color: var(--accent); cursor: pointer; }
+.v3d-bar b { font-variant-numeric: tabular-nums; }
+/* 速度条窄一点，别跟进度条抢地方 */
+.v3d-spd { flex: 0 0 84px !important; min-width: 0 !important; }
+.v3d-lab { color: var(--muted); white-space: nowrap; }
+/* 进度组 / 速度组之间的竖分隔线 */
+.v3d-sep { flex: none; width: 1px; height: 18px; background: var(--border); }
+.v3d-pct { min-width: 42px; text-align: right; color: var(--text); font-weight: 600; }
+.v3d-btn {
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+  transition: .15s;
+}
+.v3d-btn:hover { background: var(--surface-2); border-color: #c3c9d4; }
+.v3d-btn.on { background: var(--accent-weak); border-color: #bcd0ff; color: var(--accent-dark); font-weight: 600; }
+
+.v3d-msg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--muted);
+}
+
+/* 3D 模式下收起 2D 专属的图例、置灰无效按钮（免得点了没反应） */
+.canvas-panel.is-3d .legend { display: none; }
+.btn:disabled { opacity: .4; cursor: default; }
+.btn:disabled:hover { background: var(--surface); border-color: var(--border-strong); }

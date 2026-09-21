@@ -40,6 +40,11 @@ export default {
       return handleBoxRequest(request, ctx);
     }
 
+    // 按自定义尺寸现算 3D 折叠树
+    if (url.pathname === '/api/box3d' && request.method === 'POST') {
+      return handleBox3DRequest(request);
+    }
+
     // Health check
     if (url.pathname === '/' || url.pathname === '/health') {
       return new Response(JSON.stringify({ status: 'ok', service: 'diecut-api-proxy' }), {
@@ -63,6 +68,18 @@ async function handleBoxRequest(request, ctx) {
     const result = await callPackmageAPI(params, 0, ctx);
 
     return jsonResponse(result, 200);
+  } catch (e) {
+    return jsonResponse({ success: false, error: 'Server error: ' + e.message }, 500);
+  }
+}
+
+async function handleBox3DRequest(request) {
+  try {
+    const params = await request.json();
+    if (!params.boxID) {
+      return jsonResponse({ success: false, error: 'Missing boxID' }, 400);
+    }
+    return await callPackmageLin3D(params);
   } catch (e) {
     return jsonResponse({ success: false, error: 'Server error: ' + e.message }, 500);
   }
@@ -142,4 +159,40 @@ async function callPackmageAPI(params, attempt, ctx) {
   }
 
   return { success: false, error: 'API returned failure' };
+}
+
+/* ===== LinTest3D 代理：按给定尺寸现算 3D 折叠树 =====
+ * 详情页改过尺寸后，3D 必须让官方按新参数重算 —— 抽样 24 盒发现约 1/5 的盒型
+ * 折角会随尺寸变化，不能靠按比例缩放几何糊过去。
+ * ❗响应**原样透传**上游文本：Worker 免费版每请求只有 10ms CPU，大盒型的
+ *   Box3D 能到上兆，parse 再 stringify 会顶到上限。解析交给浏览器做。
+ */
+async function callPackmageLin3D(params) {
+  const r = await fetch(`https://${PACKMAGE_HOST}/uc/LinTest3D`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json;charset=UTF-8',
+      'Accept': 'application/json, text/javascript, */*; q=0.01',
+      'X-Requested-With': 'XMLHttpRequest',
+      'Referer': `https://${PACKMAGE_HOST}/Online/Design/${params.boxID || ''}`,
+      'Origin': `https://${PACKMAGE_HOST}`,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    },
+    body: JSON.stringify({
+      boxid: params.boxID,
+      boxPms: params.inPms || 'CHOOSE=3',
+      getBoxJson: 1,
+      getLineExp: 1,
+    }),
+  });
+
+  const headers = { 'Content-Type': 'application/json; charset=utf-8', ...CORS_HEADERS };
+  if (!r.ok) {
+    return new Response(JSON.stringify({ success: false, error: `HTTP ${r.status} from packmage` }), { status: 502, headers });
+  }
+  const txt = await r.text();
+  if (txt.trim().charAt(0) !== '{') {
+    return new Response(JSON.stringify({ success: false, error: '上游返回异常' }), { status: 502, headers });
+  }
+  return new Response(txt, { status: 200, headers });
 }

@@ -217,6 +217,7 @@
     var h = host();
     if (!h) return;
     h.addEventListener('wheel', function (e) {
+      if (in3D) return;                       // 3D 模式下滚轮归 OrbitControls
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       var rect = h.getBoundingClientRect();
@@ -234,7 +235,10 @@
   var _rsT = null;
   window.addEventListener('resize', function () {
     clearTimeout(_rsT);
-    _rsT = setTimeout(function () { applyZoom(true); }, 120);
+    _rsT = setTimeout(function () {
+      if (v3d && in3D) v3d.resize();
+      else applyZoom(true);
+    }, 120);
   });
 
   var dimBtn = $('dimToggle');
@@ -253,6 +257,129 @@
       markBtn.classList.toggle('on', showMark);
       renderCanvas();
     });
+  }
+
+  /* ==================== 3D 立体视图 ====================
+     懒加载：点了按钮才去下载 view3d.js（连它内部的 three.js），再按需 fetch
+     当前这一个盒型的数据（多数 1~2KB）。不点的人一个字节都不多下。
+     3D 与展开图互斥：中栏原地切换，不新增布局、不额外占高度。 */
+
+  var v3d = null, in3D = false, v3dBusy = false, no3D = false;
+  /* 折叠树是按尺寸生成的：用户一改尺寸这份树就作废（抽样 24 盒发现约 1/5 的盒型
+     折角会随尺寸变，所以不能拿旧树配新几何）。标记过期，等进 3D 时按新尺寸重取。 */
+  var v3dStale = false;
+  var TOOLS_2D = ['zoomOut', 'zoomIn', 'zoomFit', 'markToggle', 'dimToggle'];
+
+  /* 用 detail.js 自己的 script.src 定位同目录的 view3d.js —— 站点在 GitHub Pages
+     子路径（/diecut/）下也能正确解析，不写死绝对路径 */
+  var v3dURL = (function () {
+    var s = document.querySelector('script[src*="detail.js"]');
+    try { return new URL('view3d.js', s ? s.src : location.href).href; }
+    catch (e) { return 'assets/view3d.js'; }
+  })();
+
+  /* 「2D 展开图 / 3D 立体」是一组二选一的切换控件（预览框正上方），
+     点当前那个不做任何事 —— 和普通 toggle 按钮的手感不同，更像标签页。 */
+  var view3dBtn = $('view3dToggle');
+  var view2dBtn = $('view2d');
+
+  function syncViewTabs() {
+    if (view2dBtn) { view2dBtn.classList.toggle('on', !in3D); view2dBtn.setAttribute('aria-selected', String(!in3D)); }
+    if (view3dBtn) { view3dBtn.classList.toggle('on', in3D); view3dBtn.setAttribute('aria-selected', String(in3D)); }
+  }
+
+  if (view3dBtn) view3dBtn.addEventListener('click', function () { if (!in3D) enter3D(); });
+  if (view2dBtn) view2dBtn.addEventListener('click', function () { if (in3D) leave3D(); });
+
+  function set2dToolsDisabled(v) {
+    TOOLS_2D.forEach(function (id) { var b = $(id); if (b) b.disabled = !!v; });
+  }
+
+  function enter3D() {
+    if (in3D || v3dBusy || no3D) return;
+    in3D = true;
+    document.querySelector('.canvas').classList.add('is-3d');
+    document.querySelector('.canvas-panel').classList.add('is-3d');
+    syncViewTabs();
+    $('foot2d').hidden = true;
+    $('foot3d').hidden = false;
+    set2dToolsDisabled(true);
+
+    if (v3d) {
+      v3d.setVisible(true);
+      /* 上次进来之后改过尺寸 → 这份 3D 已过期，按新尺寸重取 */
+      if (v3dStale) return refresh3D(true);
+      return;
+    }
+
+    v3dBusy = true;
+    setStatus('', '正在加载 3D 立体视图…');
+    import(v3dURL).then(function (m) {
+      v3d = m.create($('view3d'), fill3dFoot);
+      v3d.setVisible(true);
+      return v3dStale ? refresh3D(true) : v3d.load(ID);
+    }).then(function () {
+      setStatus('', '3D 立体图已就绪');
+    }).catch(function (e) {
+      if (e && e.code === 'nofold') {
+        no3D = true;
+        view3dBtn.disabled = true;
+        view3dBtn.title = '该盒型官方没有提供折叠结构，暂不支持 3D 立体图';
+        setStatus('', '该盒型官方未提供折叠结构（平面件／对折卡），暂无 3D 立体图');
+      } else {
+        setStatus('err', '3D 视图加载失败：' + (e && e.message ? e.message : e));
+      }
+      leave3D();
+    }).then(function () { v3dBusy = false; });
+  }
+
+  /**
+   * 按「输入框里的当前尺寸」让官方重算折叠树。
+   * @param allowFallback 首次进入时用：新尺寸算不出来（个别盒型在极端尺寸下官方不给树）
+   *                      就退回标准尺寸，至少让用户看到立体图，并在状态栏说明。
+   */
+  function refresh3D(allowFallback) {
+    if (!v3d) return Promise.resolve();
+    setStatus('', '正在按当前尺寸重新折叠…');
+    return v3d.load(ID, { pms: buildPms() }).then(function () {
+      v3dStale = false;
+      setStatus('', '3D 立体图已按当前尺寸重新折叠');
+    }).catch(function (e) {
+      if (allowFallback) {
+        return v3d.load(ID).then(function () {
+          v3dStale = true;
+          setStatus('', '按当前尺寸重算失败，暂显示标准尺寸的 3D 图');
+        });
+      }
+      v3dStale = true;      // 失败保留过期标记，下次进来还能再试
+      setStatus('err', '按当前尺寸重算 3D 失败：' + (e && e.message ? e.message : e));
+      throw e;
+    });
+  }
+
+  function leave3D() {
+    in3D = false;
+    syncViewTabs();
+    document.querySelector('.canvas').classList.remove('is-3d');
+    document.querySelector('.canvas-panel').classList.remove('is-3d');
+    $('foot2d').hidden = false;
+    $('foot3d').hidden = true;
+    set2dToolsDisabled(false);
+    if (v3d) v3d.setVisible(false);
+    applyZoom(true);
+  }
+
+  /* three 世界坐标 (x, y, z) = 长 × 宽 × 高（实测 400 盒的轴向对应关系，见 view3d.js 注释） */
+  function fill3dFoot(info) {
+    $('f3Size').textContent = info.size[0] + ' × ' + info.size[1] + ' × ' + info.size[2] + ' mm';
+    $('f3Planes').textContent = info.planes;
+    $('f3Hinges').textContent = info.hinges;
+    $('f3CompWrap').hidden = !(info.comps > 1);
+    $('f3Comps').textContent = info.comps;
+    $('f3Steps').textContent = info.steps > 1 ? '（' + info.steps + ' 段折叠）' : '';
+    /* 数据来源要说清楚：官方标准盒型 / 按用户改后的尺寸现算 */
+    var tag = $('f3Tag');
+    if (tag) tag.textContent = info.custom ? '按当前尺寸重算' : '按官方标准盒型生成';
   }
 
   /* ---------------- 长/宽/高 面板定位（结果缓存，避免每次重绘都重扫几何） ---------------- */
@@ -483,6 +610,27 @@
   }
 
   function bindExport() {
+    /* 导出面板：顶栏按钮点开；点面板外 / 按 Esc 关掉。
+       选完格式不自动关 —— 留着让用户看到「已导出 …」的结果提示。 */
+    var menu = $('expMenu'), pop = $('expPop'), expBtn = $('expBtn');
+    if (menu && pop && expBtn) {
+      var setExpOpen = function (on) {
+        pop.hidden = !on;
+        expBtn.classList.toggle('on', on);
+        expBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
+      };
+      expBtn.addEventListener('click', function (e) {
+        e.stopPropagation();            // 别让下面那个「点外面关」立刻把它关掉
+        setExpOpen(pop.hidden);
+      });
+      document.addEventListener('click', function (e) {
+        if (!pop.hidden && !menu.contains(e.target)) setExpOpen(false);
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !pop.hidden) { setExpOpen(false); expBtn.focus(); }
+      });
+    }
+
     var btns = document.querySelectorAll('.exp-btn');
     if (!btns.length) return;
     Array.prototype.forEach.call(btns, function (btn) {
@@ -674,6 +822,10 @@
         renderCanvas();
         renderInfo();
         setStatus('ok', '已按新尺寸求解（展开 ' + V2.num((G.b[2] - G.b[0])) + ' × ' + V2.num((G.b[3] - G.b[1])) + ' mm）');
+        /* 尺寸一变，手上的 3D 折叠树就作废。3D 开着就立刻按新尺寸重做，
+           没开就留下过期标记，等下次进 3D 时再取（不白打接口）。 */
+        v3dStale = true;
+        if (in3D && v3d) refresh3D(false).catch(function () {});
       })
       .catch(function (e) {
         apiOk = false;

@@ -34,6 +34,34 @@
     <div class="sug-box" id="qbox"></div>
   </div>
   <div class="topbar-right">
+    <!-- 导出：一个按钮 + 点开后的格式面板（原来在右栏「导出下载」卡片里，挪到顶栏省一栏） -->
+    <div class="exp-menu" id="expMenu">
+      <button class="btn btn-sm" type="button" id="expBtn" aria-controls="expPop" aria-expanded="false"
+              title="导出刀模图：SVG / DXF / PDF / PNG">
+        导出下载
+        <svg class="exp-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="exp-pop" id="expPop" hidden>
+        <div class="exp-pop-head"><span>导出格式</span><span id="expSize">—</span></div>
+        <div class="exp-grid">
+          <button class="exp-btn" data-exp="svg" title="矢量刀模图，可在 Illustrator / CorelDRAW 中编辑">
+            <b>SVG</b><span>矢量刀模图</span>
+          </button>
+          <button class="exp-btn" data-exp="dxf" title="DXF 刀模图，刀模厂 / 激光切割可直接导入">
+            <b>DXF</b><span>刀模厂直用</span>
+          </button>
+          <button class="exp-btn" data-exp="pdf" title="按 1:1 实际尺寸打印，可另存为 PDF">
+            <b>PDF</b><span>1:1 打印</span>
+          </button>
+          <button class="exp-btn" data-exp="png" title="高分辨率位图，适合插入文档或做预览图">
+            <b>PNG</b><span>高清图片</span>
+          </button>
+        </div>
+        <div class="exp-note" id="expNote">
+          SVG / DXF 按 <b>1:1 实际尺寸（mm）</b>输出：切割线在 <b>CUT</b> 层、压痕线在 <b>CREASE</b> 层。
+        </div>
+      </div>
+    </div>
     <a class="btn btn-sm" href="index.html">← 返回盒型库</a>
   </div>
 </header>
@@ -115,6 +143,17 @@
   </aside>
 
   <!-- ========== 中：刀模画布 ========== -->
+  <!-- .canvas-col 只做定位锚点；视图切换条挂到 .panel 外面、正上方。
+       参照官方：标签在「有边框的内容盒」之外，激活项去下边框，贴在卡片上沿。 -->
+  <div class="canvas-col">
+    <div class="view-switch">
+      <div class="seg seg-view" role="tablist" aria-label="视图切换">
+        <button type="button" id="view2d" class="on" role="tab" aria-selected="true"
+                title="显示刀模展开图（切割线 + 压痕线）">2D 展开图</button>
+        <button type="button" id="view3dToggle" role="tab" aria-selected="false"
+                title="把这张刀模展开图实时折叠成 3D 立体盒。改过尺寸之后，会自动按当前尺寸重新折叠">3D 立体</button>
+      </div>
+    </div>
   <section class="panel canvas-panel">
     <div class="canvas-tools">
       <button class="btn btn-sm" id="zoomOut">−</button>
@@ -131,15 +170,27 @@
     </div>
     <div class="canvas">
       <div class="canvas-inner" id="canvasInner"></div>
+      <!-- 3D 立体视图（点了「3D 立体」才激活，原地替换上图，不新增布局） -->
+      <div class="view3d" id="view3d"></div>
     </div>
-    <div class="canvas-foot">
+    <div class="canvas-foot" id="foot2d">
       <span>展开尺寸 <b id="footBox">—</b></span>
       <span>切割线 <b id="footCut">—</b></span>
       <span>压痕线 <b id="footCrease">—</b></span>
       <span title="按压痕线之间的间距自动匹配长/宽/高对应的面板；匹配不上的尺寸不标，避免标错">尺寸位置 <b id="footMark">—</b></span>
       <span style="margin-left:auto">刀模展开图（单位 mm）</span>
     </div>
+    <!-- 3D 模式下的底栏（与上面那条互斥显示，两条都在 DOM 里，避免每次切换重拼 HTML） -->
+    <div class="canvas-foot" id="foot3d" hidden>
+      <span title="3D 立体模型折叠后的外廓包围盒（长 × 宽 × 高）。含锁舌、翼片等外扩部分，可能与左侧制造尺寸有零点几毫米到几毫米的出入">折叠后尺寸 <b id="f3Size">—</b></span>
+      <span>面板 <b id="f3Planes">—</b></span>
+      <span>铰链 <b id="f3Hinges">—</b></span>
+      <span id="f3CompWrap" hidden>拼版 <b id="f3Comps">—</b></span>
+      <span title="折叠结构来自官方。改过尺寸之后会自动按当前尺寸重新折叠">3D 立体图 · <b id="f3Tag">按官方标准盒型生成</b><b id="f3Steps"></b></span>
+      <span style="margin-left:auto">左键旋转 · 中键平移 · 滚轮缩放</span>
+    </div>
   </section>
+  </div>
 
   <!-- ========== 右：信息卡 ========== -->
   <aside class="info-stack">
@@ -152,29 +203,6 @@
           内尺寸 = 制造尺寸 − 2×向内补偿<br>
           外尺寸 = 制造尺寸 + 2×向外补偿<br>
           <span style="color:var(--muted)">（补偿为单边量，一个尺寸跨两块纸板，故 ×2；纸板厚度 = 向内补偿 + 向外补偿）</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head"><h2>导出下载</h2><span style="font-size:11.5px;color:var(--muted)" id="expSize">—</span></div>
-      <div class="panel-body" style="padding:10px 12px 12px">
-        <div class="exp-grid">
-          <button class="exp-btn" data-exp="svg" title="矢量刀模图，可在 Illustrator / CorelDRAW 中编辑">
-            <b>SVG</b><span>矢量刀模图</span>
-          </button>
-          <button class="exp-btn" data-exp="dxf" title="DXF 刀模图，刀模厂 / 激光切割可直接导入">
-            <b>DXF</b><span>刀模厂直用</span>
-          </button>
-          <button class="exp-btn" data-exp="pdf" title="按 1:1 实际尺寸打印，可另存为 PDF">
-            <b>PDF</b><span>1:1 打印</span>
-          </button>
-          <button class="exp-btn" data-exp="png" title="高分辨率位图，适合插入文档或做预览图">
-            <b>PNG</b><span>高清图片</span>
-          </button>
-        </div>
-        <div class="exp-note" id="expNote">
-          SVG / DXF 按 <b>1:1 实际尺寸（mm）</b>输出：切割线在 <b>CUT</b> 层、压痕线在 <b>CREASE</b> 层。
         </div>
       </div>
     </div>

@@ -198,6 +198,69 @@ function callPackmageAPI(params, attempt) {
   });
 }
 
+/* ===== LinTest3D proxy：按给定尺寸现算 3D 折叠树 =====
+ * 详情页改过尺寸后，3D 不能沿用原始尺寸的折叠树 —— 抽样 24 盒发现约 1/5 的盒型
+ * 折角会随尺寸变化，所以必须让官方按新参数重算一次。
+ * 上游返回里只挑折叠用得到的三个字段，别把整包（含大量 2D 数据）透传给浏览器。
+ */
+function callLin3D(params, attempt) {
+  attempt = attempt || 0;
+  return new Promise(function(resolve) {
+    var postData = JSON.stringify({
+      boxid: params.boxID,
+      boxPms: params.inPms || 'CHOOSE=3',
+      getBoxJson: 1,
+      getLineExp: 1
+    });
+
+    var options = {
+      hostname: 'online.packmage.cn',
+      path: '/uc/LinTest3D',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json;charset=UTF-8',
+        'Content-Length': Buffer.byteLength(postData),
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Referer': 'https://online.packmage.cn/Online/Design/' + (params.boxID || ''),
+        'Origin': 'https://online.packmage.cn',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      }
+    };
+
+    var proxyReq = https.request(options, function(proxyRes) {
+      var data = '';
+      proxyRes.on('data', function(chunk) { data += chunk; });
+      proxyRes.on('end', function() {
+        var head = data.replace(/^\uFEFF/, '').trim().charAt(0);
+        if (proxyRes.statusCode !== 200 || head !== '{') {
+          console.log('[PACKMAGE] LinTest3D non-JSON for ' + params.boxID + ' (HTTP ' + proxyRes.statusCode + ')');
+          resolve({ ok: false, error: '上游返回异常（HTTP ' + proxyRes.statusCode + '）' });
+          return;
+        }
+        /* ❗原样透传，代理层不 JSON.parse：
+           Cloudflare Worker 免费版每请求只有 10ms CPU，大盒型的 Box3D 能到上兆，
+           parse + 重新 stringify 会顶到上限。交给浏览器解析一次即可。 */
+        resolve({ ok: true, text: data });
+      });
+    });
+
+    proxyReq.on('error', function(e) {
+      console.error('[PACKMAGE] LinTest3D error:', e.message);
+      resolve({ success: false, error: 'Proxy error: ' + e.message });
+    });
+
+    proxyReq.setTimeout(20000, function() {
+      proxyReq.destroy();
+      console.error('[PACKMAGE] LinTest3D timeout for ' + params.boxID);
+      resolve({ success: false, error: 'Timeout' });
+    });
+
+    proxyReq.write(postData);
+    proxyReq.end();
+  });
+}
+
 /* ===== HTTP server ===== */
 const server = http.createServer(function(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -236,6 +299,42 @@ const server = http.createServer(function(req, res) {
         res.end(JSON.stringify({ success: false, error: 'Invalid JSON' }));
       }
     });
+  } else if (url === '/api/box3d' && req.method === 'POST') {
+    let body3 = '';
+    req.on('data', function(chunk) { body3 += chunk; });
+    req.on('end', function() {
+      try {
+        var p3 = JSON.parse(body3);
+        if (!p3.boxID) {
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ success: false, error: 'Missing boxID' }));
+          return;
+        }
+        console.log('[API] POST /api/box3d boxID=' + p3.boxID + ' inPms=' + (p3.inPms || ''));
+        enqueueApiCall(function(resolve, reject) {
+          return callLin3D(p3).then(function(result) {
+            if (!result.ok) {
+              console.log('[API] box3d failed: ' + result.error);
+              res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+              res.end(JSON.stringify({ success: false, error: result.error }));
+              resolve();
+              return;
+            }
+            console.log('[API] box3d ok: ' + result.text.length + ' 字');
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(result.text);
+            resolve();
+          }).catch(function(err) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, error: err.message }));
+            resolve();
+          });
+        });
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: 'Invalid JSON' }));
+      }
+    });
   } else if (url === '/api/box' && req.method === 'GET') {
     var params = querystring.parse(req.url.split('?')[1] || '');
     enqueueApiCall(function(resolve, reject) {
@@ -256,6 +355,7 @@ const server = http.createServer(function(req, res) {
 
 server.listen(PORT, function() {
   console.log('DieCut Designer server running at http://localhost:' + PORT);
-  console.log('API proxy: POST /api/box { boxID, inPms }');
+  console.log('API proxy: POST /api/box { boxID, inPms }  → 2D 刀模展开图');
+  console.log('           POST /api/box3d { boxID, inPms } → 按该尺寸现算的 3D 折叠树');
   console.log('Rate limit: ' + MIN_API_INTERVAL + 'ms between calls, ' + MAX_RETRIES + ' retries');
 });
