@@ -11,11 +11,28 @@
   var _loaded = {};
   var BASE = 'data/';
 
+  /* 资源缓存版本串（cache-busting），值由 tools/bump-assets.mjs 按源码内容算出，
+     写在 HTML 的 <script src="assets/common.js?v=xxx"> 上。
+     ❗ 站点把 *.js / *.css 缓存 4 小时、HTML 只缓存 10 分钟 → 发版后老用户会拿到
+     「新 HTML + 旧 JS」的错配组合（2026-09-22 崩过一次：新 box.html 删掉了
+     #advParams，缓存里的旧 detail.js 还在写它 → Cannot set properties of null）。
+     这里把同一个版本串继承给动态加载的数据文件，全站一次发版一起换。 */
+  var ASSET_V = (function () {
+    var s = document.querySelector('script[src*="common.js"]');
+    var m = s && /[?&]v=([A-Za-z0-9._-]+)/.exec(s.getAttribute('src') || '');
+    return m ? m[1] : '';
+  })();
+
+  function withV(url) {
+    if (!ASSET_V) return url;
+    return url + (url.indexOf('?') < 0 ? '?' : '&') + 'v=' + ASSET_V;
+  }
+
   function loadScript(src) {
     if (_loaded[src]) return _loaded[src];
     _loaded[src] = new Promise(function (resolve, reject) {
       var s = document.createElement('script');
-      s.src = src;
+      s.src = withV(src);
       s.async = true;
       s.onload = function () { resolve(); };
       s.onerror = function () { reject(new Error('加载失败: ' + src)); };

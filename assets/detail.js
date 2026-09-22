@@ -319,8 +319,14 @@
      子路径（/diecut/）下也能正确解析，不写死绝对路径 */
   var v3dURL = (function () {
     var s = document.querySelector('script[src*="detail.js"]');
-    try { return new URL('view3d.js', s ? s.src : location.href).href; }
-    catch (e) { return 'assets/view3d.js'; }
+    try {
+      var u = new URL(s ? s.src : location.href, location.href);
+      /* ❗ 只换文件名、保留 query —— detail.js 的 URL 上带着缓存版本串（?v=xxx），
+         用 new URL('view3d.js', s.src) 会把 query 丢掉，view3d.js 就仍命中
+         4 小时的旧缓存，与新版 detail.js 错配（同 #advParams 那类事故）。 */
+      u.pathname = u.pathname.replace(/detail\.js$/, 'view3d.js');
+      return u.href;
+    } catch (e) { return 'assets/view3d.js'; }
   })();
 
   /* 「2D 展开图 / 3D 立体」是一组二选一的切换控件（预览框正上方），

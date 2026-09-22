@@ -96,7 +96,8 @@ DieCut Designer 是一个纯前端（无框架）的刀模设计工具，内置 
 ├── packmage_boxlib_zh.min.js # 上游盒型名录
 ├── tools/                    # 开发工具
 │   ├── install-hooks.mjs     # 安装 pre-push 钩子
-│   ├── hooks/pre-push.mjs    # 推送即部署 Worker
+│   ├── hooks/pre-push.mjs    # 推送即部署 Worker + 校验资源版本串
+│   ├── bump-assets.mjs       # 写静态资源缓存版本串 ?v=<内容哈希>
 │   └── fetch_thumbs.py       # 缩略图抓取
 ├── v1/                       # 已废弃的自研 3D 折叠路线（保留备查）
 ├── FEFCO/                    # FEFCO 盒型参考资料
@@ -176,6 +177,32 @@ SVG / DXF / PDF 均为矢量输出、坐标单位为毫米，刀线与压线分�
 - 钩子真逻辑在 `tools/hooks/pre-push.mjs`（入库）；`.git/hooks/pre-push` 只是薄壳，由安装脚本生成
 - 部署凭据在 `~/.workbuddy/cf-worker-deploy.env`（不入库）；实现细节见技能 `cloudflare-worker-deploy`
 - **部署失败不阻塞推送**（静态站该上还是要上），但终端会醒目告警——此时线上 `/api/*` 仍是旧版
+
+### 静态资源缓存版本串（`?v=`）
+
+站点把 `*.js` / `*.css` 缓存 **4 小时**（`max-age=14400`），
+而 HTML 只缓存 **10 分钟**（`max-age=600`）。两者不同步 → 发版后最长 4 小时内，
+老浏览器会拿到「**新 HTML + 缓存的旧 JS**」这个错配组合。
+
+2026-09-22 就因此崩过一次：新版 `box.html` 删掉了 `#advParams` / `#advWrap`，
+而浏览器里缓存的旧 `detail.js` 仍在写这两个元素 →
+`TypeError: Cannot set properties of null (setting 'innerHTML')`，
+被启动链的 `catch` 写进状态栏，表现为「刀模图不显示 + 按钮下方一条报错」。
+
+对策：按源码内容算哈希写进资源 URL，内容一变标识就变，缓存立即失效。
+
+```bash
+# 改完 assets/ 里的脚本后跑一次（写进 index.html / box.html）
+node tools/bump-assets.mjs
+
+# 只校验是否同步（exit 1 = 未同步，供钩子调用）
+node tools/bump-assets.mjs --check
+```
+
+- 哈希覆盖 `assets/*.js` + `style.css` + `data/catalog.js` + `data/geo/*.js`（当前 20 个文件）
+- `common.js` / `detail.js` 会把版本串**继承**给动态加载的 `catalog.js`、`geo/NN.js`、`view3d.js`，全站一次发版一起换
+- **忘了跑也不会坏**：pre-push 钩子会检测到「改了脚本但 `?v=` 没同步」并醒目告警（不阻塞推送）
+- 本地 `server.js` 已做 `req.url.split('?')[0]`，带版本串照样能跑
 
 
 ## 已知约束

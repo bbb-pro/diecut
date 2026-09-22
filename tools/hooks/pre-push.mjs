@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /*
- * pre-push —— 推送前自动部署 Cloudflare Worker（本项目的 `diecut-api` 代理）。
+ * pre-push —— 推送前做两件事：
+ *   ① 自动部署 Cloudflare Worker（本项目的 `diecut-api` 代理）
+ *   ② 校验静态资源版本串（?v=）是否与源码同步（只告警，见文末 3.6）
  *
  * 为什么需要它：Worker 不走 GitHub Actions，`git push` 只更新 Pages 上的静态站，
  * 线上 `/api/*` 代理脚本不会跟着变。于是「改了 worker.js 但忘了单独发」会静默造成
@@ -186,6 +188,27 @@ log(`判断：${need ? '✔ 需要部署' : '— 无需部署'}（${reason}）`)
 const dirtyR = git(['status', '--porcelain', '--', ...TRIGGER_FILES]);
 if (dirtyR.status === 0 && dirtyR.stdout.trim()) {
   warn('⚠️ 工作区里 worker.js / wrangler.toml 还有未提交的改动 —— 本次部署的是「工作区当前内容」（deploy.mjs 直接读文件，不是上次提交的版本）');
+}
+
+/* ---------- 3.6 静态资源版本串检查 ----------
+   站点把 *.js / *.css 缓存 4 小时（CF max-age=14400），HTML 只缓存 10 分钟。
+   改了 assets/ 里的脚本却没更新页面上的 ?v= → 发版后最长 4 小时内，老浏览器会拿到
+   「新 HTML + 缓存的旧 JS」。2026-09-22 就因此崩过：新 box.html 删掉了 #advParams，
+   缓存里的旧 detail.js 还在写它 → Cannot set properties of null (setting 'innerHTML')。
+   这里只告警、不阻塞（push 已经在跑，改也来不及），修复靠紧接着补一次提交。 */
+try {
+  const bump = spawnSync(process.execPath, [path.join(ROOT, 'tools', 'bump-assets.mjs'), '--check'], {
+    encoding: 'utf8',
+    cwd: ROOT,
+  });
+  if (bump.status !== 0) {
+    warn('⚠️ 静态资源版本串未同步 —— 改了 assets/ 或 data/ 里的脚本，但页面上的 ?v= 还是旧的');
+    (bump.stdout || '').split(/\r?\n/).filter(Boolean).forEach((l) => warn('   ' + l));
+    warn('   后果：老浏览器「新 HTML + 旧 JS」，可能直接报 Cannot set properties of null。');
+    warn('   修复：node tools/bump-assets.mjs && git add index.html box.html && 提交');
+  }
+} catch (e) {
+  warn('版本串检查跳过：' + e.message);
 }
 
 if (!need) finish(0);

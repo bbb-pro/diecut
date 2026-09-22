@@ -116,7 +116,14 @@ function libs() {
 }
 
 function dataURL(id) {
-  return new URL('../data/3d/' + encodeURIComponent(id) + '.json', import.meta.url).href;
+  var u = new URL('../data/3d/' + encodeURIComponent(id) + '.json', import.meta.url);
+  /* 继承 view3d.js 自己的缓存版本串（?v=xxx，由 tools/bump-assets.mjs 写入）：
+     折叠树会随数据同步重抓，不带版本串的话老浏览器最长 4 小时拿到旧树，
+     配上按新尺寸算出的几何会折歪（切 3D 时用 force-cache，更依赖这一点）。
+     ⚠️ new URL(相对路径, import.meta.url) 不会把 query 传下去，必须显式补。 */
+  var v = new URL(import.meta.url).searchParams.get('v');
+  if (v) u.searchParams.set('v', v);
+  return u.href;
 }
 
 function esc(s) {
