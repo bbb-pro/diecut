@@ -27,6 +27,40 @@ const MIME = {
   '.ico': 'image/x-icon',
 };
 
+/**
+ * 上游 cadData.PmItems → 站内参数表格式 {n, d, v, l, dl}。
+ * 与 worker.js / download_all_boxes.js 里的同名函数保持一致。
+ *
+ * ❗ 必须规范化后再返回：上游字段是 Name / DefaultV / Layer / DownList，
+ * 而详情页按 n / v / l / dl 读取。直接把 PmItems 丢过去，前端映射出的每项
+ * 都是 {n: undefined} —— 首屏用内嵌数据看着正常，一旦重求解把 G.p 换成这份
+ * 坏数据，之后改任何参数都传不回上游（实测：改 d2 只有第一次生效）。
+ */
+function normPm(items, ceStr) {
+  const ce = {};
+  String(ceStr || '').split(',').forEach((kv) => {
+    const i = kv.indexOf('=');
+    if (i > 0) ce[kv.slice(0, i).trim().toLowerCase()] = kv.slice(i + 1).trim();
+  });
+  return (items || []).filter((it) => it && it.Name).map((it) => {
+    const n = String(it.Name).toLowerCase();
+    const o = { n: n, l: it.Layer || 0, d: it.Desc || '' };
+    const v = ce[n];
+    if (v != null && v !== '') {
+      const num = parseFloat(v);
+      o.v = isFinite(num) && String(num) === v ? num : v;
+    } else {
+      o.v = it.DefaultV == null ? '' : it.DefaultV;
+    }
+    if (it.DownList) {
+      o.dl = Object.entries(it.DownList)
+        .map(([k, val]) => ({ v: String(k).replace(/^_/, '').trim(), t: String(val).trim() }))
+        .sort((a, b) => (parseFloat(a.v) || 0) - (parseFloat(b.v) || 0));
+    }
+    return o;
+  });
+}
+
 /* ===== API Request Queue =====
  * packmage.cn rate-limits rapid successive requests by returning an encrypted
  * "code" field instead of actual geometry data. We serialize requests with a
@@ -146,7 +180,7 @@ function callPackmageAPI(params, attempt) {
               success: true,
               box: {
                 ce: d.ce,
-                pm: cadData.PmItems || [],
+                pm: normPm(cadData.PmItems, d.ce),
                 rm: cadData.Remarks || [],
                 fe: d.fe,
                 de: {

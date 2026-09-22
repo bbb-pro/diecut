@@ -14,6 +14,15 @@
   var unit = 'mm';
   var dims = { L: null, W: null, D: null };  // 统一以「制造尺寸 mm」存储
   var ceLive = null;     // 当前生效的参数值
+  /* 用户显式改过的参数（大写 key → 值）。必须单独记一份：
+     重求解成功后 ceLive 会被上游返回的 ce 覆盖，若靠「ceLive ≠ G.ce」来判断
+     "改没改过"，用户上一次的改动就会在这一次请求里丢掉（实测：改 d2 再改 of，
+     请求里只剩 OF，d2 的改动没了）。resetAll / 重新载入盒型时清空。 */
+  var userPms = {};
+  /* 盒型的原始默认值快照（首屏加载时的参数与长/宽/高）。
+     「重置」必须回到这里 —— 拿 G.ce 当默认值会把重置变成"保持当前"，
+     因为 G.ce 在每次重求解后都会被上游返回的新值覆盖（改过 L 之后 ce.l 就是新值）。 */
+  var ce0 = null, dims0 = null;
   var S = null;          // 尺寸计算结果
   var dimMode = null;    // 长/宽/高 各自能否编辑（见 V2.dimControl）
 
@@ -52,6 +61,8 @@
     dims.L = numOr(G.ce.l);
     dims.W = numOr(G.ce.w);
     dims.D = numOr(G.ce.d);
+    ce0 = Object.assign({}, G.ce);                       // 重置用的原始快照
+    dims0 = { L: dims.L, W: dims.W, D: dims.D };
     SP = spansFrom(G.rm);
     compute();
 
@@ -490,12 +501,14 @@
       ceLive.cal = v;
       compute();
       renderInfo();
+      scheduleRecompute();
     });
     $('btnCalReset').addEventListener('click', function () {
       calInput.value = S.t = r2((+ceLive.inner || 0) + (+ceLive.outer || 0));
       ceLive.cal = calInput.value;
       compute();
       renderInfo();
+      scheduleRecompute();
     });
 
     renderOtherParams();
@@ -581,38 +594,30 @@
         compute();
         renderInfo();
         renderCanvas();   // 图上标注按当前口径同步刷新
+        scheduleRecompute();   // 改完尺寸同样自动问一次上游
       });
     });
   }
 
   function renderOtherParams() {
+    /* 主尺寸（长/宽/高/纸板厚）已在上面单独成组，这里放其余**全部**参数。
+       原先按上游 Layer 拆成「其他参数（第 0 层）/ 高级参数（第 1~14 层，还按层再分组）」，
+       分类太碎、找参数要翻两层 —— 按用户要求合并成一个列表，
+       顺序沿用上游给的参数顺序（上游顺序本身有含义）。 */
     var main = ['l', 'w', 'd', 'cal'];
-    var lv0 = (G.p || []).filter(function (p) { return p.l === 0 && main.indexOf(p.n) < 0; });
-    $('otherParams').innerHTML = lv0.length
-      ? lv0.map(paramHtml).join('')
-      : '<div style="font-size:12.5px;color:var(--muted)">该盒型无额外外观参数</div>';
-
-    /* 高级参数：按 Layer 分组（1..14），分层列出才好找 */
-    var adv = (G.p || []).filter(function (p) { return p.l >= 1; });
-    if (adv.length) {
-      var byL = {};
-      adv.forEach(function (p) { (byL[p.l] = byL[p.l] || []).push(p); });
-      $('advParams').innerHTML = Object.keys(byL).sort(function (a, b) { return a - b; })
-        .map(function (L) {
-          return '<div class="param-layer"><span>第 ' + L + ' 层</span></div>'
-            + byL[L].map(paramHtml).join('');
-        }).join('');
-    } else {
-      $('advParams').innerHTML = '<div style="font-size:12.5px;color:var(--muted)">无</div>';
-    }
-    $('advWrap').style.display = adv.length ? '' : 'none';
+    var rest = (G.p || []).filter(function (p) { return main.indexOf(p.n) < 0; });
+    $('otherParams').innerHTML = rest.length
+      ? rest.map(paramHtml).join('')
+      : '<div style="font-size:12.5px;color:var(--muted)">该盒型无额外参数</div>';
 
     document.querySelectorAll('.param input, .param select').forEach(function (inp) {
       var ev = inp.tagName === 'SELECT' ? 'change' : 'input';
       inp.addEventListener(ev, function () {
         ceLive[this.dataset.n] = this.value;
+        userPms[String(this.dataset.n).toUpperCase()] = this.value;   // 记牢，别被重求解冲掉
         compute();
         renderInfo();
+        scheduleRecompute();   // 改完自动问一次上游，不必再手动点按钮
       });
     });
   }
@@ -799,6 +804,7 @@
   function buildPms() {
     var order = [];
     var map = {};
+    // ① 基底：上游自己用的求解参数串（op）
     String(G.op || '').split(',').forEach(function (kv) {
       var i = kv.indexOf('=');
       if (i <= 0) return;
@@ -807,25 +813,26 @@
       map[k] = kv.slice(i + 1).trim();
     });
 
-    // 覆盖已改动的主参数
+    // ② 主尺寸：dims 才是权威（已经按内/外/刀模口径换算过）
     if (dims.L != null) map.L = dims.L;
     if (dims.W != null) map.W = dims.W;
     if (dims.D != null) map.D = dims.D;
     map.CAL = ceLive.cal;
 
-    // 只发送 packmage 自己使用的参数集（op）。
-    // 其余 pm 参数（L1/W1/W2 等）是后端派生量，回传会污染求解结果，
-    // 因此仅当用户显式改动过时才追加。
+    /* ③ 用户显式改过的参数：**无条件回传**。
+       上游求解是无状态的 —— 每次只认本次传过去的参数，所以用户改过的值
+       必须每次带上，否则第二次改动会把第一次的改动顶掉（实测：改 d2 再改 of，
+       请求里只剩 OF，d2 回到默认）。
+       另外 op 里的 key 也要允许覆盖：像 JP008 的 d2 既是 op 成员
+       （`D2=80`）又显示在「其他参数」面板里，旧代码用 `k in map` 直接跳过它，
+       于是面板里改了 d2 却传不上去（点「重新计算」也没反应）。 */
     var MAIN = { L: 1, W: 1, D: 1, CAL: 1 };
-    (G.p || []).forEach(function (p) {
-      var k = String(p.n).toUpperCase();
-      if (MAIN[k] || (k in map)) return;
-      var cur = ceLive[p.n];
-      var orig = G.ce[p.n];
-      if (cur != null && cur !== '' && String(cur) !== String(orig)) {
-        order.push(k);
-        map[k] = cur;
-      }
+    Object.keys(userPms).forEach(function (k) {
+      if (MAIN[k]) return;                                   // 主尺寸/纸厚另有来源
+      var v = userPms[k];
+      if (v == null || v === '') return;
+      if (!Object.prototype.hasOwnProperty.call(map, k)) order.push(k);
+      map[k] = v;
     });
 
     return order.filter(function (k) { return map[k] !== undefined && map[k] !== ''; })
@@ -834,6 +841,25 @@
 
   var apiOk = null;
 
+  /* ==================== 自动重求解 ====================
+     改参数后自动问一次上游（不必再手动点「重新计算刀模」）——
+     这是上游设计器的行为。两点保护：
+       ① 防抖 700ms：连续输入/点步进器只发最后一次
+       ② 串行：同一时刻只允许一个请求在飞；飞的过程中又改了，等这次回来再补一次
+     已知离线（apiOk === false）时不再打接口，免得每次都撞墙。 */
+  var rcTimer = null, rcBusy = false, rcAgain = false;
+
+  function scheduleRecompute() {
+    if (apiOk === false) return;
+    clearTimeout(rcTimer);
+    rcTimer = setTimeout(function () { recompute(false); }, 700);
+  }
+
+  function endRecompute() {
+    rcBusy = false;
+    if (rcAgain) { rcAgain = false; recompute(false); }
+  }
+
   function setStatus(kind, text) {
     var el = $('status');
     el.className = 'status' + (kind ? ' ' + kind : '');
@@ -841,6 +867,8 @@
   }
 
   function recompute(userAction) {
+    if (rcBusy) { rcAgain = true; return; }   // 已有请求在飞 → 记一笔，回来后再补发
+    rcBusy = true;
     setStatus('', '正在求解…');
     var body = JSON.stringify({ boxID: ID, inPms: buildPms() });
 
@@ -897,14 +925,33 @@
         G = {
           b: [mnx, mny, mxx, mxy],
           c: flat(cuts), k: flat(creases),
-          p: (nb.pm || []).length ? (nb.pm || []).map(function (p) {
-            var o = { n: p.n, v: p.v, l: p.l || 0 };
-            if (p.d) o.d = String(p.d);
-            if (!/^(sty|choose|of|ct|nan|insty|tran)/i.test(p.n) && p.n !== 'cal') o.u = 1;
-            return o;
-          }) : G.p,
+          /* 参数表也用上游最新的一份：值会随尺寸联动（如 JP008 把 d1 校正成 96.67）。
+             ❗ 两层防御：
+               ① 字段名兼容 —— 上游原始 PmItems 用 Name/DefaultV/Layer，本站格式用 n/v/l；
+               ② 映射不出有效项时**保留旧的 G.p** —— 否则 G.p 被 {n:undefined} 的
+                  空壳项污染，buildPms 遍历时全被跳过，之后改任何参数都传不回上游
+                  （实测踩到：改 d2 只有第一次生效，后续改动静默丢失）。 */
+          p: (function () {
+            var arr = (nb.pm || []).map(function (p) {
+              var nm = p.n || p.Name || p.name || '';
+              var o = {
+                n: String(nm).toLowerCase(),
+                v: (p.v != null ? p.v : (p.DefaultV != null ? p.DefaultV : '')),
+                l: p.l || p.Layer || 0
+              };
+              if (p.d || p.Desc) o.d = String(p.d || p.Desc);
+              if (p.dl) o.dl = p.dl;
+              if (!/^(sty|choose|of|ct|nan|insty|tran)/i.test(o.n) && o.n !== 'cal') o.u = 1;
+              return o;
+            }).filter(function (o) { return !!o.n; });
+            return arr.length ? arr : G.p;
+          })(),
           ce: parseCe(nb.ce),
-          op: (de.op || G.op),
+          /* ❗ op 是「盒型默认的求解参数串」，必须保持首屏那一份：
+             上游返回的 de.op 是**按本次传入参数**生成的（改过 L 之后里面就写着 L=420），
+             拿它当新基底 → 用户的改动会被固化成新默认值，点「重置」也退不回去
+             （实测：重置后请求里仍带 STY1=3）。 */
+          op: G.op,
           cal: G.cal,
           /* 标注随尺寸一起变（实测改 L 后坐标、值、条数都会更新），
              所以重算后要用上游新给的 Remarks；万一没拿到就沿用旧的，
@@ -926,11 +973,13 @@
            没开就留下过期标记，等下次进 3D 时再取（不白打接口）。 */
         v3dStale = true;
         if (in3D && v3d) refresh3D(false).catch(function () {});
+        endRecompute();
       })
       .catch(function (e) {
         apiOk = false;
         setStatus('err', '未连接求解服务，已保留原刀模图形（尺寸标注已更新）');
         $('offlineNote').style.display = '';
+        endRecompute();
       });
   }
 
@@ -957,10 +1006,14 @@
   }
 
   function resetAll() {
-    ceLive = Object.assign({}, G.ce);
-    dims.L = numOr(G.ce.l);
-    dims.W = numOr(G.ce.w);
-    dims.D = numOr(G.ce.d);
+    /* ❗ 回到 ce0 / dims0（首屏快照），不能用 G.ce —— 它已经被重求解结果覆盖了，
+       否则「恢复默认」会变成「保持当前」（实测：改长 420 后点重置纹丝不动）。 */
+    ceLive = Object.assign({}, ce0 || G.ce);
+    userPms = {};          // 改动记录一起清掉，否则「恢复默认」后下次重求解又把旧改动带上去
+    var d0 = dims0 || { L: numOr(G.ce.l), W: numOr(G.ce.w), D: numOr(G.ce.d) };
+    dims.L = d0.L;
+    dims.W = d0.W;
+    dims.D = d0.D;
     compute();
     var ci = $('calInput');
     ci.value = S.t;
@@ -971,6 +1024,7 @@
     renderDims();
     renderInfo();
     setStatus('', '已恢复为默认参数');
+    scheduleRecompute();   // 参数全还原了，同步问一次上游
   }
 
   bindDimInputs();

@@ -4,13 +4,11 @@
  * Deploys to Cloudflare Workers to proxy packmage.cn API requests.
  * This solves the CORS problem when hosting on GitHub Pages.
  *
- * Deploy:
- *   1. Go to https://dash.cloudflare.com -> Workers & Pages
- *   2. Create Worker (name it "diecut-api")
- *   3. Paste this entire file into the editor
- *   4. Click "Deploy"
- *   5. Copy the Worker URL (e.g. https://diecut-api.<subdomain>.workers.dev)
- *   6. Update config.js with this URL
+ * Deploy（⛔ 不要再手贴 Dashboard）:
+ *   - 推送自动部署：git push 时 .git/hooks/pre-push 检测到本文件变更 → 自动调
+ *     ~/.workbuddy/skills/cloudflare-worker-deploy/deploy.mjs 用 API Token 直传
+ *   - 手动部署：node tools/hooks/pre-push.mjs --force
+ *   - Worker 名 diecut-api，路由 057300.xyz/api/* 已存在；上传后立即生效
  *
  * Free tier: 100,000 requests/day (plenty for this app)
  */
@@ -26,6 +24,40 @@ const CORS_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type',
   'Access-Control-Max-Age': '86400',
 };
+
+/**
+ * 上游 cadData.PmItems → 站内参数表格式 {n, d, v, l, dl}。
+ *
+ * ❗ 必须规范化后再返回：上游字段是 Name / DefaultV / Layer / DownList，
+ * 而详情页按 n / v / l / dl 读取。直接把 PmItems 丢过去，前端映射出的每项
+ * 都是 {n: undefined} —— 首屏用的是内嵌数据看着正常，一旦重求解把 G.p 换成
+ * 这份坏数据，**之后改任何参数都传不回上游**（实测踩到：改 d2 只在第一次生效）。
+ * 值优先取 ce（上游按当前尺寸回传的实际值），取不到才用 DefaultV。
+ */
+function normPm(items, ceStr) {
+  const ce = {};
+  String(ceStr || '').split(',').forEach((kv) => {
+    const i = kv.indexOf('=');
+    if (i > 0) ce[kv.slice(0, i).trim().toLowerCase()] = kv.slice(i + 1).trim();
+  });
+  return (items || []).filter((it) => it && it.Name).map((it) => {
+    const n = String(it.Name).toLowerCase();
+    const o = { n: n, l: it.Layer || 0, d: it.Desc || '' };
+    const v = ce[n];
+    if (v != null && v !== '') {
+      const num = parseFloat(v);
+      o.v = isFinite(num) && String(num) === v ? num : v;
+    } else {
+      o.v = it.DefaultV == null ? '' : it.DefaultV;
+    }
+    if (it.DownList) {
+      o.dl = Object.entries(it.DownList)
+        .map(([k, val]) => ({ v: String(k).replace(/^_/, '').trim(), t: String(val).trim() }))
+        .sort((a, b) => (parseFloat(a.v) || 0) - (parseFloat(b.v) || 0));
+    }
+    return o;
+  });
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -130,7 +162,7 @@ async function callPackmageAPI(params, attempt, ctx) {
       success: true,
       box: {
         ce: d.ce,
-        pm: cadData.PmItems || [],
+        pm: normPm(cadData.PmItems, d.ce),
         /* 标注数据（尺寸线画在哪、标什么）—— 详情页改尺寸后靠它更新标注。
            原始锚点坐标，前端按 de.ox/oy 换成图面坐标 */
         rm: cadData.Remarks || [],

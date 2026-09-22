@@ -513,21 +513,8 @@ button, input, select { font-family: inherit; font-size: inherit; color: inherit
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 8px center; }
 
-/* 高级参数按 Layer 分组，组标题做成分隔行 */
-.param-layer { display: flex; align-items: center; gap: 8px; margin: 12px 0 2px; }
-.param-layer:first-child { margin-top: 0; }
-.param-layer span { font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: .3px; white-space: nowrap; }
-.param-layer::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-
-details.adv { margin-top: 14px; border-top: 1px dashed var(--border); padding-top: 12px; }
-details.adv summary {
-  cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--text-2);
-  list-style: none; display: flex; align-items: center; gap: 6px; user-select: none;
-}
-details.adv summary::-webkit-details-marker { display: none; }
-details.adv summary::before { content: "▸"; font-size: 10px; color: var(--muted); transition: .2s; }
-details.adv[open] summary::before { transform: rotate(90deg); }
-details.adv .field-group { margin-top: 12px; }
+/* 参数面板已合并成单一「其他参数」列表：原来的 .param-layer 分组标题行
+   与 details.adv 折叠块（高级参数）都已移除，故不再需要对应样式（2026-09-22） */
 
 .actions { display: flex; gap: 8px; margin-top: 16px; }
 .actions .btn { flex: 1; justify-content: center; }

@@ -185,7 +185,7 @@ log(`判断：${need ? '✔ 需要部署' : '— 无需部署'}（${reason}）`)
 /* ---------- 3.5 工作区未提交改动提醒 ---------- */
 const dirtyR = git(['status', '--porcelain', '--', ...TRIGGER_FILES]);
 if (dirtyR.status === 0 && dirtyR.stdout.trim()) {
-  warn('注意：工作区里 worker.js / wrangler.toml 还有未提交的改动，本次部署的是"已提交版本"');
+  warn('⚠️ 工作区里 worker.js / wrangler.toml 还有未提交的改动 —— 本次部署的是「工作区当前内容」（deploy.mjs 直接读文件，不是上次提交的版本）');
 }
 
 if (!need) finish(0);
