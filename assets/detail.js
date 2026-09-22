@@ -66,14 +66,30 @@
     SP = spansFrom(G.rm);
     compute();
 
-    renderHead();
-    renderCanvas();
-    renderPanel();
-    syncDimLock();
-    renderInfo();
-    renderRelated();
-    renderTags();
-    bindExport();
+    /* 各渲染步骤互相隔离：某一步抛错不该让后面全都不执行。
+       ❗ 2026-09-22 事故复盘：缓存里的旧 JS 在「参数面板」这步写已删除的 #advParams 抛了
+       TypeError，被启动链的 catch 接住 → 后面「尺寸对照 / 刀模规格 / 用途标签」三栏
+       全都没渲染（用户看到的就是"这三栏信息都没了"）。一次单点故障不该瘫掉整页。
+       这里逐步 try/catch：失败的记下来，其余照常渲染，并把失败项报到状态栏 + 控制台。 */
+    var failed = [];
+    [
+      ['头部', renderHead],
+      ['刀模图', renderCanvas],
+      ['参数面板', renderPanel],
+      ['尺寸口径', syncDimLock],
+      ['尺寸对照', renderInfo],
+      ['相关盒型', renderRelated],
+      ['用途标签', renderTags],
+      ['导出面板', bindExport]
+    ].forEach(function (it) {
+      try {
+        it[1]();
+      } catch (e) {
+        failed.push(it[0]);
+        if (window.console && console.error) console.error('[boot] ' + it[0] + ' 渲染失败', e);
+      }
+    });
+    if (failed.length) setStatus('err', failed.join('、') + ' 渲染失败（其余区域正常，可尝试强制刷新）');
   }
 
   function numOr(v) { var n = parseFloat(v); return isFinite(n) ? Math.round(n * 100) / 100 : null; }
@@ -868,6 +884,7 @@
 
   function setStatus(kind, text) {
     var el = $('status');
+    if (!el) return;   // 元素缺失时静默跳过：状态提示本身不该再抛错
     el.className = 'status' + (kind ? ' ' + kind : '');
     el.innerHTML = '<i class="dot"></i>' + V2.esc(text);
   }
