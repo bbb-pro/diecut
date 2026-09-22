@@ -55,16 +55,31 @@ function revParse(ref) {
   return /^[0-9a-f]{40}$/.test(s) ? s : '';
 }
 
-// 找到"远端同步点"：本机 refs/remotes 偶尔为空（origin/main 显示 gone），
-// 逐级回退，最后拉一次再试。
-function resolveBase(headSha) {
-  const tryList = () => revParse('refs/remotes/origin/main') || revParse('origin/main') || revParse('FETCH_HEAD');
-  let base = tryList();
-  if (!base) {
-    git(['fetch', 'origin', '--quiet']);
-    base = tryList();
-  }
-  return base;
+// 找到"远端同步点"。⚠️ 本机这个仓库的 remote-tracking ref **写不进去**：
+// `git fetch origin` / `git update-ref refs/remotes/origin/main` 都报成功
+// （fetch 甚至打印 `* [new branch] main -> origin/main`），但 `.git/refs/remotes`
+// 始终为空、`git branch -vv` 显示 `origin/main: gone`。配置本身正常
+// （repositoryformatversion=0、无 extensions/reftable/commondir），node 直写同目录却可见，
+// 所以判定为环境层面的怪象 → 干脆不依赖它，改成多级回退：
+//   1) remote-tracking ref（若哪天真能用了，自动走这条，最快且不联网）
+//   2) `git ls-remote origin refs/heads/main` —— 权威网络查询，~1s，仅手动/--check 场景才走
+//   3) FETCH_HEAD（上次 fetch/push 的点，可能陈旧）
+//   4) 全都拿不到 → 返回空，调用方按"新分支"保守处理
+function remoteBaseRef() {
+  return revParse('refs/remotes/origin/main') || revParse('origin/main');
+}
+function lsRemoteBase() {
+  const r = git(['ls-remote', 'origin', 'refs/heads/main']);
+  if (r.status !== 0) return '';
+  const m = /^([0-9a-f]{40})\s+refs\/heads\/main$/m.exec((r.stdout || '').trim());
+  return m ? m[1] : '';
+}
+function resolveBase() {
+  const local = remoteBaseRef();
+  if (local) return local;
+  const net = lsRemoteBase();
+  if (net) return net;
+  return revParse('FETCH_HEAD') || '';
 }
 
 function finish(code) {
@@ -105,7 +120,7 @@ if (!FORCE && !process.stdin.isTTY) {
 if (!FORCE && refLines.length === 0) {
   // 手动运行：拿 HEAD 与「远端同步点」比（--check 自检也走这条）
   const head = revParse('HEAD');
-  const base = resolveBase(head);
+  const base = resolveBase();
   if (head && base) {
     refLines = [['refs/heads/main', head, MAIN_REF, base]];
   } else if (head) {
