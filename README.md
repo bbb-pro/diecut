@@ -123,6 +123,24 @@ node server.js
 
 项目为纯静态站点，由 GitHub Actions（`.github/workflows/deploy.yml`）自动部署到 GitHub Pages，并绑定自定义域名 `057300.xyz`。
 
+### API 代理（Cloudflare Worker）—— 推送时自动部署
+
+`worker.js` **不走 GitHub Actions**：Pages 的 CI 只发静态文件，动不了 Worker。
+为此仓库内置了 **pre-push 钩子**——`git push` 时若推送范围里改动了 `worker.js` 或 `wrangler.toml`，
+钩子会用 Cloudflare API Token 把新脚本**直接部署上线**（立即生效，没有 Pages 那种 CDN 传播窗口）。
+
+| 场景 | 命令 |
+|------|------|
+| 新机器 clone 后装钩子（只需一次） | `node tools/install-hooks.mjs` |
+| 看钩子状态 | `node tools/install-hooks.mjs --status` |
+| 只判断不部署（自检） | `node tools/hooks/pre-push.mjs --check` |
+| 手动强制部署（不改代码也想重发） | `node tools/hooks/pre-push.mjs --force` |
+| 临时跳过 | `git push --no-verify` 或 `SKIP_WORKER_DEPLOY=1 git push` |
+
+- 钩子真逻辑在 `tools/hooks/pre-push.mjs`（入库）；`.git/hooks/pre-push` 只是薄壳，由安装脚本生成
+- 部署凭据在 `~/.workbuddy/cf-worker-deploy.env`（不入库）；实现细节见技能 `cloudflare-worker-deploy`
+- **部署失败不阻塞推送**（静态站该上还是要上），但终端会醒目告警——此时线上 `/api/*` 仍是旧版
+
 
 ## 已知约束
 

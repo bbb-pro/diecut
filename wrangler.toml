@@ -1,5 +1,12 @@
+# ⚠️ 本项目的 Worker **不用 wrangler 部署**（本机也没装），此文件只作声明与参考。
+# 真正上线走两条路：
+#   1) 推送自动部署 —— `git push` 时 .git/hooks/pre-push 检测到 worker.js / 本文件变更，
+#      自动调用技能 cloudflare-worker-deploy（逻辑见 tools/hooks/pre-push.mjs）
+#   2) 手动部署 —— node tools/hooks/pre-push.mjs --force
+# ❗ compatibility_date 必须与线上一致：部署脚本会先 GET 线上 settings 原样回填，
+#   改这里**不会**改变线上兼容日期；核对用 `node ~/.workbuddy/skills/cloudflare-worker-deploy/info.mjs`。
 name = "diecut-api"
 main = "worker.js"
-compatibility_date = "2024-01-01"
+compatibility_date = "2026-07-24"
 
 # Free tier: 100,000 requests/day
