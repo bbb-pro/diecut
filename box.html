@@ -160,12 +160,20 @@
       <span style="font-size:12px;color:var(--muted);min-width:42px;text-align:center" id="zoomVal">100%</span>
       <button class="btn btn-sm" id="zoomIn">+</button>
       <button class="btn btn-sm" id="zoomFit">适应</button>
-      <button class="btn btn-sm on" id="markToggle" title="在展开图上标出长 / 宽 / 高分别对应哪一块面板">长宽高</button>
-      <button class="btn btn-sm on" id="dimToggle" title="显示/隐藏图上尺寸标注：展开宽（上）与展开高（左）">展开尺寸</button>
+      <button class="btn btn-sm on" id="rmMain" title="显示主尺寸标注：长 / 宽 / 高这类主参数的尺寸线（橙色）">主尺寸</button>
+      <button class="btn btn-sm" id="rmOth" title="显示其他参数标注：圆角、插舌、锁扣等结构参数的尺寸线（绿色）">其他参数</button>
+      <span class="rm-txt" title="标注文字怎么显示">
+        <select id="rmTxt">
+          <option value="2" selected>数值</option>
+          <option value="0">代码=数值</option>
+          <option value="1">代码</option>
+        </select>
+      </span>
+      <button class="btn btn-sm on" id="dimToggle" title="显示/隐藏整张图的展开宽（上）与展开高（左）">展开尺寸</button>
       <div class="legend">
         <span><i></i>切割线</span>
         <span class="lg-crease"><i></i>压痕线</span>
-        <span class="lg-mk" id="lgMark"><i style="background:#3b6ef5"></i><i style="background:#ef7f2c"></i><i style="background:#12a594"></i>长/宽/高</span>
+        <span class="lg-mk" id="lgMark"><i style="background:#de7a00"></i>主尺寸<i style="background:#1f801f"></i>其他参数</span>
       </div>
     </div>
     <div class="canvas">
@@ -177,7 +185,7 @@
       <span>展开尺寸 <b id="footBox">—</b></span>
       <span>切割线 <b id="footCut">—</b></span>
       <span>压痕线 <b id="footCrease">—</b></span>
-      <span title="按压痕线之间的间距自动匹配长/宽/高对应的面板；匹配不上的尺寸不标，避免标错">尺寸位置 <b id="footMark">—</b></span>
+      <span title="标注位置与数值都取自盒型本身，改尺寸后会一起更新">图上标注 <b id="footMark">—</b></span>
       <span style="margin-left:auto">刀模展开图（单位 mm）</span>
     </div>
     <!-- 3D 模式下的底栏（与上面那条互斥显示，两条都在 DOM 里，避免每次切换重拼 HTML） -->
@@ -200,9 +208,8 @@
       <div class="panel-body" style="padding:10px 12px 12px">
         <div id="sizeTable"></div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.7">
-          内尺寸 = 制造尺寸 − 2×向内补偿<br>
-          外尺寸 = 制造尺寸 + 2×向外补偿<br>
-          <span style="color:var(--muted)">（补偿为单边量，一个尺寸跨两块纸板，故 ×2；纸板厚度 = 向内补偿 + 向外补偿）</span>
+          内 / 外尺寸取自盒型自身的尺寸标注 —— 已把插舌、内衬这类结构占位算进去，<br>
+          比按补偿推算更贴近实物（纸板厚度 = 向内补偿 + 向外补偿）。
         </div>
       </div>
     </div>

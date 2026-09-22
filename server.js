@@ -147,6 +147,7 @@ function callPackmageAPI(params, attempt) {
               box: {
                 ce: d.ce,
                 pm: cadData.PmItems || [],
+                rm: cadData.Remarks || [],
                 fe: d.fe,
                 de: {
                   w: d.de.Width,

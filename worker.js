@@ -131,6 +131,9 @@ async function callPackmageAPI(params, attempt, ctx) {
       box: {
         ce: d.ce,
         pm: cadData.PmItems || [],
+        /* 标注数据（尺寸线画在哪、标什么）—— 详情页改尺寸后靠它更新标注。
+           原始锚点坐标，前端按 de.ox/oy 换成图面坐标 */
+        rm: cadData.Remarks || [],
         fe: d.fe,
         de: {
           w: d.de.Width,

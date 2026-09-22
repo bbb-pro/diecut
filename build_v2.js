@@ -256,9 +256,23 @@ function main() {
     const L = num(ce.l, null), W = num(ce.w, null), Dp = num(ce.d, null);
     const inner = num(ce.inner, 0), outer = num(ce.outer, 0);
     const th = num(ce.cal, r2(inner + outer));
-    /* 内外补偿是「单边」量，一个尺寸跨两块纸板，故 ×2（2026-09-16 飞哥确认口径） */
-    const mk = (v) => (v == null ? null
-      : { m: r2(v), i: r2(v - 2 * inner), o: r2(v + 2 * outer) });
+    /* 主尺寸的标注值是 [内尺寸, 外尺寸, 刀模尺寸] 三元组 —— 上游给的内/外是
+       真值（考虑了插舌、内衬这类结构占位），不是简单按补偿推出来的。
+       抽样 167 条里只有 47% 与「制造 ± 2×补偿」一致，E055 官方内长 276、
+       公式给 297，差 21mm。所以有真值就用真值，缺了才退回公式。 */
+    const rmMain = {};
+    (box.rm || []).forEach((r) => {
+      if (Array.isArray(r[4]) && r[4].length >= 3) rmMain[String(r[0]).toLowerCase()] = r[4];
+    });
+    const mk = (v, key) => {
+      if (v == null) return null;
+      const t = rmMain[key];
+      return {
+        m: r2(v),
+        i: t ? r2(t[0]) : r2(v - 2 * inner),
+        o: t ? r2(t[1]) : r2(v + 2 * outer)
+      };
+    };
 
     const maxDim = Math.max(geo.maxX - geo.minX, geo.maxY - geo.minY) || 1;
     const tol = maxDim * 0.001;
@@ -288,7 +302,11 @@ function main() {
       p: params,
       ce: ce,
       op: (box.de || {}).op || '',
-      cal: box.cal || null
+      cal: box.cal || null,
+      /* 官方标注数据（锚点已换成图面坐标，与 b/c/k 同一套坐标）。
+         展开图上的尺寸标注全部由它驱动 —— 位置、类型、主参/其他都照上游来，
+         不再靠几何反推「长宽高在哪块面板」。 */
+      rm: box.rm || []
     };
     curCount++;
 
@@ -298,7 +316,7 @@ function main() {
       cat: cat,
       cats: cats.length ? cats : [0],
       tags: tags.slice(0, 6),
-      L: mk(L), W: mk(W), D: mk(Dp),
+      L: mk(L, 'l'), W: mk(W, 'w'), D: mk(Dp, 'd'),
       t: r2(th),
       inner: r2(inner),
       outer: r2(outer),

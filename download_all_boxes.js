@@ -130,7 +130,7 @@ function fetchBox(boxID) {
       inPms: '', // 空 = 用上游默认参数
       getBox3D: 'false',
       getFullPmsDesc: 'true',
-      getRemark: 'false',
+      getRemark: 'true',
       tran: '0',
     });
 
@@ -173,6 +173,7 @@ function fetchBox(boxID) {
             },
             ce: d.ce,
             pm: normPm(cadData.PmItems, d.ce),
+            rm: normRm(cadData.Remarks, d.de.OffsetX, d.de.OffsetY),
             fe: d.fe,
           });
         } catch (e) {
@@ -216,6 +217,31 @@ function normPm(items, ceStr) {
     }
     return o;
   });
+}
+
+/** 官方标注数据 cadData.Remarks → 站内紧凑格式
+ *
+ *  源格式：[参数名, 锚点x, 锚点y, 类型, 值]
+ *    · 类型  x/xb 水平尺寸、y/yl 垂直尺寸、r1~r4 半径、a* 与 ac* 角度
+ *    · 值    数组 = 主尺寸 [内尺寸, 外尺寸, 刀模尺寸]；单值 = 普通参数
+ *    · 上游已经把 sty* / cal* / inner / outer / choose 这类不标注的参数滤掉了，
+ *      前端不需要再筛一遍
+ *
+ *  ❗坐标是「锚点坐标」，官方渲染时也要减 OffsetX/OffsetY 才落到图面上。
+ *    站内几何同样平移了 |Offset|（实测 OffsetX/OffsetY 恒 ≤ 0，两种写法等价），
+ *    这里直接存成图面坐标，前端就不必再换算 —— 两端必须用同一套坐标，
+ *    否则标注会整体偏掉一个 Offset（E055 就是 110 × 303）。
+ */
+function normRm(items, ox, oy) {
+  const ax = Math.abs(ox || 0);
+  const ay = Math.abs(oy || 0);
+  const r1 = (v) => Math.round(v * 10) / 10;
+  const r2 = (v) => Math.round(v * 100) / 100;
+  const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+  return (items || []).filter((r) => r && r.length >= 5 && r[3]).map((r) => [
+    String(r[0]), r1(num(r[1]) + ax), r1(num(r[2]) + ay), String(r[3]),
+    Array.isArray(r[4]) ? r[4].map((v) => r2(num(v))) : r2(num(r[4])),
+  ]);
 }
 
 /** 带重试的抓取（CI 网络抖动兜底） */
@@ -278,14 +304,17 @@ async function main() {
   const allBoxes = {};
   for (const id of Object.keys(localBoxes)) if (newIds.has(id)) allBoxes[id] = localBoxes[id];
 
-  /* 要抓的有两类：
+  /* 要抓的有三类：
      ① 本地没有几何的盒型
      ② 几何有、但参数表（pm）为空的 —— 老快照当年抓到的是空 PmItems，
-        上游现在每盒都返回 18~80 项参数，按这条补上，否则参数面板永远是空的 */
+        上游现在每盒都返回 18~80 项参数，按这条补上，否则参数面板永远是空的
+     ③ 几何有、但缺标注数据（rm）的 —— 尺寸标注改成读上游 Remarks 之后，
+        老快照没有这一项，不补的话展开图上一条标注都不会有 */
   const missing = catalog.map((c) => c.id)
-    .filter((id) => !allBoxes[id] || !((allBoxes[id].pm || []).length));
+    .filter((id) => !allBoxes[id] || !((allBoxes[id].pm || []).length)
+      || !((allBoxes[id].rm || []).length));
   const targets = FORCE ? catalog.map((c) => c.id) : missing;
-  log('需要抓取: ' + targets.length + ' 个' + (FORCE ? '（--force 全量重下）' : '（缺几何或缺参数表的盒型）'));
+  log('需要抓取: ' + targets.length + ' 个' + (FORCE ? '（--force 全量重下）' : '（缺几何 / 参数表 / 标注数据的盒型）'));
 
   /* --- 4) 抓几何 --- */
   let ok = 0;

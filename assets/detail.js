@@ -52,6 +52,7 @@
     dims.L = numOr(G.ce.l);
     dims.W = numOr(G.ce.w);
     dims.D = numOr(G.ce.d);
+    SP = spansFrom(G.rm);
     compute();
 
     renderHead();
@@ -68,11 +69,18 @@
 
   function compute() {
     S = V2.sizesOf(ceLive);
-    /* 补偿是单边量、尺寸跨两块纸板 → ×2：
-       内 = 制造 − 2×内向补偿，外 = 制造 + 2×外向补偿（外 − 内 = 2×纸板厚度） */
-    if (dims.L != null) S.L = { m: dims.L, i: r2(dims.L - 2 * S.inner), o: r2(dims.L + 2 * S.outer) };
-    if (dims.W != null) S.W = { m: dims.W, i: r2(dims.W - 2 * S.inner), o: r2(dims.W + 2 * S.outer) };
-    if (dims.D != null) S.D = { m: dims.D, i: r2(dims.D - 2 * S.inner), o: r2(dims.D + 2 * S.outer) };
+    /* 内/外尺寸用上游标注里的真值差值；拿不到标注才退回
+       「内 = 制造 − 2×内向补偿、外 = 制造 + 2×外向补偿」
+       （补偿是单边量、尺寸跨两块纸板，故 ×2） */
+    ['L', 'W', 'D'].forEach(function (k) {
+      if (dims[k] == null) return;
+      var di = SP.inn[k], dob = SP.out[k];
+      S[k] = {
+        m: dims[k],
+        i: r2(di != null ? dims[k] - di : dims[k] - 2 * S.inner),
+        o: r2(dob != null ? dims[k] + dob : dims[k] + 2 * S.outer)
+      };
+    });
   }
   function r2(v) { return Math.round(v * 100) / 100; }
 
@@ -99,7 +107,9 @@
 
   var zoom = 1;
   var showDim = true;            // 展开宽/展开高 尺寸线
-  var showMark = true;           // 长/宽/高 面板位置标注
+  var showMain = true;           // 主尺寸标注（长/宽/高那类，橙色）
+  var showOth = false;           // 其他参数标注（绿色）—— 上游默认也是关着的
+  var txtMode = 2;               // 标注文字：0 代码=数值 / 1 只要代码 / 2 只要数值
   var dimFs = null;              // 标注字号（用户单位），按渲染比例校正
   var DIM_PX = 12;               // 标注目标渲染字号（px）
   var canvasHost = null;         // .canvas（滚动视窗）
@@ -124,10 +134,7 @@
     var svg = V2.svg(G, {
       pad: 18,
       dim: showDim,
-      marks: showMark,
-      dims: markDims(),
-      faces: markFaces(),
-      markOffset: markOffset(),
+      rm: { on: true, main: showMain, oth: showOth, choose: rmChoose(), txtMode: txtMode },
       unit: unit,
       fs: dimFs,
       nameW: '展开宽',
@@ -138,7 +145,7 @@
 
     // 用「贴合时的真实比例」反推字号 —— 让所有盒型（大图/小图/狭长图）里标注大小一致，
     // 且缩放时标注跟着图形一起放大，不会出现「图形放大了字还是 12px」的割裂感。
-    if ((showDim || showMark) && (pass || 0) < 2) {
+    if ((showDim || showMain || showOth) && (pass || 0) < 2) {
       var el = $('canvasInner').querySelector('svg');
       var vb = el && el.viewBox && el.viewBox.baseVal;
       var scale = vb && vb.width ? calcFit(vb) / vb.width : 0;
@@ -161,21 +168,25 @@
 
     var fm = $('footMark');
     if (fm) {
-      if (!showMark) fm.textContent = '已关闭';
-      else {
-        var f = markFaces();
-        var cover = {};
-        (f ? [].concat(f.x, f.y) : []).forEach(function (t) {
-          (t.ks || [t.k]).forEach(function (k) { cover[k] = 1; });
-        });
-        var hit = ['L', 'W', 'D'].filter(function (k) { return cover[k]; })
-          .map(function (k) { return V2.MARK_NAME[k]; });
-        var miss = ['L', 'W', 'D'].filter(function (k) { return !cover[k]; })
-          .map(function (k) { return V2.MARK_NAME[k]; });
-        fm.textContent = hit.length
-          ? hit.join('·') + (miss.length ? '（未识别 ' + miss.join('·') + '）' : ' 全部标出')
-          : '未识别';      }
+      var st = rmStat();
+      fm.textContent = st.main || st.oth
+        ? '主尺寸 ' + st.mShown + '/' + st.main + ' · 其他参数 ' + st.oShown + '/' + st.oth
+        : '该盒型无标注数据';
     }
+  }
+
+  /** 展开口径对应的上游 choose：制造=3 / 内=1 / 外=2 */
+  function rmChoose() { return dimType === 'i' ? 1 : dimType === 'o' ? 2 : 3; }
+
+  /** 标注条数统计（底栏用）：上游给了多少条、当前开关下画出来多少条 */
+  function rmStat() {
+    var rm = (G && G.rm) || [];
+    var n = { main: 0, oth: 0, mShown: 0, oShown: 0 };
+    rm.forEach(function (r) {
+      if (Array.isArray(r[4])) { n.main++; if (showMain) n.mShown++; }
+      else { n.oth++; if (showOth) n.oShown++; }
+    });
+    return n;
   }
 
   /* 缩放：按像素设宽（不是百分比），并保持视窗中心不动 */
@@ -252,11 +263,32 @@
     });
   }
 
-  var markBtn = $('markToggle');
-  if (markBtn) {
-    markBtn.addEventListener('click', function () {
-      showMark = !showMark;
-      markBtn.classList.toggle('on', showMark);
+  /* 主尺寸 / 其他参数是两个独立的显示开关 —— 与上游底部那排一致：
+     主尺寸（长宽高这类，标注值是三元组）默认开，其他参数默认关。
+     图上密密麻麻几十条标注反而看不清刀模结构，需要时再打开。 */
+  var rmMainBtn = $('rmMain');
+  if (rmMainBtn) {
+    rmMainBtn.addEventListener('click', function () {
+      showMain = !showMain;
+      rmMainBtn.classList.toggle('on', showMain);
+      renderCanvas();
+    });
+  }
+
+  var rmOthBtn = $('rmOth');
+  if (rmOthBtn) {
+    rmOthBtn.addEventListener('click', function () {
+      showOth = !showOth;
+      rmOthBtn.classList.toggle('on', showOth);
+      renderCanvas();
+    });
+  }
+
+  /* 标注文字口径：只要数值 / 代码=数值（上游叫 txtMode） */
+  var rmTxtSel = $('rmTxt');
+  if (rmTxtSel) {
+    rmTxtSel.addEventListener('change', function () {
+      txtMode = +this.value || 0;
       renderCanvas();
     });
   }
@@ -270,7 +302,7 @@
   /* 折叠树是按尺寸生成的：用户一改尺寸这份树就作废（抽样 24 盒发现约 1/5 的盒型
      折角会随尺寸变，所以不能拿旧树配新几何）。标记过期，等进 3D 时按新尺寸重取。 */
   var v3dStale = false;
-  var TOOLS_2D = ['zoomOut', 'zoomIn', 'zoomFit', 'markToggle', 'dimToggle'];
+  var TOOLS_2D = ['zoomOut', 'zoomIn', 'zoomFit', 'rmMain', 'rmOth', 'rmTxt', 'dimToggle'];
 
   /* 用 detail.js 自己的 script.src 定位同目录的 view3d.js —— 站点在 GitHub Pages
      子路径（/diecut/）下也能正确解析，不写死绝对路径 */
@@ -397,34 +429,24 @@
     if (tag) tag.textContent = info.custom ? '按当前尺寸重算' : '按标准尺寸生成';
   }
 
-  /* ---------------- 长/宽/高 面板定位（结果缓存，避免每次重绘都重扫几何） ---------------- */
+  /* ---------------- 内/外尺寸的真值（来自上游主尺寸标注） ----------------
+     上游主尺寸标注的值是 [内尺寸, 外尺寸, 刀模尺寸] 三元组，内/外是**真值**
+     —— 它把插舌、内衬这类结构占位算进去了，不是「制造 ± 2×补偿」推出来的。
+     全库实测只有一半对得上（E055 官方内长 276，公式给 297，差 21mm），
+     所以这里记「相对制造尺寸的差值」，改尺寸后按差值平移，值仍随改随变。 */
 
-  var faceCache = null, faceKey = '';
+  var SP = { inn: {}, out: {} };
 
-  /** 几何被替换后必须让定位缓存失效，否则标注会停在旧位置上 */
-  function invalidateFaces() { faceCache = null; faceKey = ''; }
-
-  function markDims() {
-    if (!S || !S.L || !S.W || !S.D) return null;
-    return { L: S.L.m, W: S.W.m, D: S.D.m };
-  }
-
-  function markFaces() {
-    if (!showMark || !G) return null;
-    var d = markDims();
-    if (!d) return null;
-    var key = d.L + '|' + d.W + '|' + d.D;
-    if (key !== faceKey) {
-      faceCache = V2.locateFaces(G, d);
-      faceKey = key;
-    }
-    return faceCache;
-  }
-
-  /** 图上标的是当前口径：内尺寸要减、外尺寸要加 */
-  function markOffset() {
-    if (!S) return 0;
-    return dimType === 'i' ? -2 * S.inner : dimType === 'o' ? 2 * S.outer : 0;
+  function spansFrom(rm) {
+    var inn = {}, out = {};
+    (rm || []).forEach(function (r) {
+      if (!Array.isArray(r[4]) || r[4].length < 3) return;
+      var k = { l: 'L', w: 'W', d: 'D' }[String(r[0]).toLowerCase()];
+      if (!k) return;
+      inn[k] = r2(r[4][2] - r[4][0]);
+      out[k] = r2(r[4][1] - r[4][2]);
+    });
+    return { inn: inn, out: out };
   }
 
   /* ==================== 参数面板 ==================== */
@@ -667,10 +689,7 @@
       g: G, id: ID, name: V2.displayName(B), box: B,
       sizes: S, dimType: dimType, unit: unit,
       dim: showDim,
-      marks: showMark,
-      dims: markDims(),
-      faces: markFaces(),
-      markOffset: markOffset()
+      rm: { on: true, main: showMain, oth: showOth, choose: rmChoose(), txtMode: txtMode }
     };
   }
 
@@ -886,14 +905,18 @@
           }) : G.p,
           ce: parseCe(nb.ce),
           op: (de.op || G.op),
-          cal: G.cal
+          cal: G.cal,
+          /* 标注随尺寸一起变（实测改 L 后坐标、值、条数都会更新），
+             所以重算后要用上游新给的 Remarks；万一没拿到就沿用旧的，
+             绝不能空着 —— 那会让整张图一条标注都没有。 */
+          rm: (nb.rm && nb.rm.length) ? normRm(nb.rm, de.ox, de.oy) : G.rm
         };
         ceLive = Object.assign({}, G.ce, { cal: ceLive.cal });
         /* 只读尺寸要先按上游回来的新 ce 更新，再算、再画 —— 否则方盒改了长，
            宽的输入框还停在旧值上，看着就像「改了没反应」。 */
         syncLockedDims();
         syncDimLock();
-        invalidateFaces();
+        SP = spansFrom(G.rm);
         compute();
         renderDims();
         renderCanvas();
@@ -909,6 +932,18 @@
         setStatus('err', '未连接求解服务，已保留原刀模图形（尺寸标注已更新）');
         $('offlineNote').style.display = '';
       });
+  }
+
+  /** 上游 Remarks → 站内格式：锚点坐标加 |Offset| 变成图面坐标
+      （几何也是这么平移的，两端必须同一套坐标，否则标注会整体偏掉一个 Offset） */
+  function normRm(items, ox, oy) {
+    var ax = Math.abs(ox || 0), ay = Math.abs(oy || 0);
+    return (items || []).filter(function (r) {
+      return r && r.length >= 5 && r[3];
+    }).map(function (r) {
+      return [String(r[0]), r1(+r[1] + ax), r1(+r[2] + ay), String(r[3]),
+        Array.isArray(r[4]) ? r[4].map(function (v) { return r2(+v); }) : r2(+r[4])];
+    });
   }
 
   function parseCe(ce) {

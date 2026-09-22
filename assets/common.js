@@ -66,11 +66,11 @@
     inner: '#12a594'
   };
 
-  /** 长/宽/高 在展开图上的定位配色 */
-  V2.MARK_COLOR = { L: '#3b6ef5', W: '#ef7f2c', D: '#12a594' };
-  V2.MARK_NAME = { L: '长', W: '宽', D: '高' };
-  var MARK_ORDER = { L: 0, W: 1, D: 2 };   // 摆放优先级：长先占中线，宽高再避让
-  var MARK_BOX = null;                     // markLayer 把标注牌外沿写在这里，V2.svg 据此撑画布
+  /* 尺寸标注配色 —— 与上游一致：主尺寸（长/宽/高这类主参数）橙、其他参数绿。
+     上游 SignDataToART 用「值是不是数组」决定用哪个色槽（isArray ? 0 : 1），
+     两个槽位的默认值就是这两个（可在上游「颜色设置」里改）。 */
+  V2.RM_COLOR = { main: '#de7a00', oth: '#1f801f' };
+  var RM_BOX = null;                       // rmLayer 把标注外沿写在这里，V2.svg 据此撑画布
 
   /* ---------------- 几何 -> SVG ---------------- */
 
@@ -112,12 +112,12 @@
     var W = b[2] - b[0], H = b[3] - b[1];
     var basePad = opts.pad == null ? 14 : opts.pad;
     var useDim = !!opts.dim;
-    var useMark = !!opts.marks && !!opts.dims && !!(opts.dims.L || opts.dims.W || opts.dims.D);
+    var useRm = !!(opts.rm && opts.rm.on !== false) && !!(g.rm && g.rm.length);
 
     var SW = opts.sw || V2.SW_MM;
     var DASH = opts.dash || V2.SW_MM.dash;
 
-    var fs = (useDim || useMark) ? (opts.fs || V2.dimFontSize(g)) : 0;
+    var fs = (useDim || useRm) ? (opts.fs || V2.dimFontSize(g)) : 0;
     fs = Math.max(0.3, Math.min(200, fs));
     var band = fs * 1.5;                 // 尺寸线距图形边缘的距离
 
@@ -129,15 +129,16 @@
       padB = Math.max(basePad * 0.4, fs * 0.8);
     }
 
-    /* 标注牌比图形边缘还靠外时（窄面板 + 大字），把画布扩出去，别把牌子裁掉 */
-    var markStr = '';
-    if (useMark) {
-      markStr = markLayer(b, fs, opts);
-      if (MARK_BOX) {
-        padL = Math.max(padL, b[0] - MARK_BOX.x0 + fs * 0.6);
-        padT = Math.max(padT, b[1] - MARK_BOX.y0 + fs * 0.6);
-        padR = Math.max(padR, MARK_BOX.x1 - b[2] + fs * 0.6);
-        padB = Math.max(padB, MARK_BOX.y1 - b[3] + fs * 0.6);
+    /* 标注跑到图形外面时（引出线、尺寸线、文字都可能在图幅外），
+       把画布扩出去，别把标注裁掉 */
+    var rmStr = '';
+    if (useRm) {
+      rmStr = rmLayer(g, fs, opts);
+      if (RM_BOX) {
+        padL = Math.max(padL, b[0] - RM_BOX.x0 + fs * 0.6);
+        padT = Math.max(padT, b[1] - RM_BOX.y0 + fs * 0.6);
+        padR = Math.max(padR, RM_BOX.x1 - b[2] + fs * 0.6);
+        padB = Math.max(padB, RM_BOX.y1 - b[3] + fs * 0.6);
       }
     }
 
@@ -170,7 +171,7 @@
         ' d="' + cut + '"/>';
     }
     if (useDim) s += dimLayer(b, fs, band, opts);
-    if (useMark) s += markStr;
+    if (useRm) s += rmStr;
     s += '</svg>';
     return s;
   };
@@ -284,277 +285,36 @@
       'fill:' + V2.COLOR.arrow + ';stroke:none') + ' d="' + d + '"/>';
   }
 
-  /* ---------------- 长/宽/高 在展开图上的位置定位 ----------------
-     思路：盒子的长/宽/高一定体现为「两块压痕线之间的一段间距」。
-     把展开图里所有轴对齐线段扫出来 → 按键值聚类 → 找间距等于 L/W/D 的那一对 →
-     再取这对线段之间被其它线段切分出的最大空档，就是那个面板的实际范围。
-     识别不出来就不标注，绝不瞎标。                                    */
+  /* ---------------- 尺寸标注：直接渲染上游 Remarks ----------------
+     不再靠几何反推「长宽高在哪块面板」，而是照搬上游给的标注数据。
+     每条 Remark = [参数名, 图面x, 图面y, 类型, 值]：
 
-  /** 扫出轴对齐线段（V=竖线，H=横线），k 为线所在坐标 */
-  function axisLines(polys) {
-    var V = [], H = [];
-    for (var i = 0; i < polys.length; i++) {
-      var pl = polys[i];
-      if (!pl) continue;
-      for (var j = 0; j + 3 < pl.length; j += 2) {
-        var x1 = pl[j], y1 = pl[j + 1], x2 = pl[j + 2], y2 = pl[j + 3];
-        if (Math.abs(x1 - x2) < 0.05 && Math.abs(y2 - y1) > 0.5) {
-          V.push({ k: round1(x1), a: Math.min(y1, y2), b: Math.max(y1, y2) });
-        } else if (Math.abs(y1 - y2) < 0.05 && Math.abs(x2 - x1) > 0.5) {
-          H.push({ k: round1(y1), a: Math.min(x1, x2), b: Math.max(x1, x2) });
-        }
-      }
-    }
-    return { V: V, H: H };
+       类型  x / xb    水平尺寸，线沿 x 方向；x 的文字在上方，xb 在下方
+             y / yl    垂直尺寸，线沿 y 方向；y 的文字在右侧，yl 在左侧
+             r1 ~ r4   圆角半径，45° 对角引出 + 箭头（r1 右上 / r2 左上 / r3 左下 / r4 右下）
+             a* / ac*  角度，起始边与终止边各一支箭头
+       值    数组 = 主尺寸 [内尺寸, 外尺寸, 刀模尺寸]，按当前尺寸口径取其一；
+             单值 = 普通参数，直接就是数值
+
+     配色：值是数组的算「主尺寸」，用主参色；其余用其他参数色 ——
+     上游 SignDataToART 正是按 Array.isArray(v) 分槽的（t[6] = 0 / 1）。
+
+     ❗上游渲染用的是**屏幕像素**单位（线偏移 5px、引出 20px、箭头半宽 3px…），
+       这里要换到图面单位。上游字号 k 像素时那几个量约合 0.42k、1.7k，
+       所以取「1px ≈ 字号/12」作换算因子：fs 越大（图越大）标注越长，比例恒定。 */
+
+  var RM_PX = 1 / 12;        // 上游 1px ≈ 字号 × RM_PX（图面单位）
+  var RM_ARROW = 0.6;        // 箭头长度（× 字号）
+
+  /** 标注里「线」的长度：主尺寸取刀模尺寸（数组末位），其他参数就是它自己的值 */
+  function rmLenOf(r) {
+    var v = r[4];
+    return +((Array.isArray(v) ? v[v.length - 1] : v)) || 0;
   }
 
-  /** 把线段坐标聚类成「板界」：{k, iv:[[a,b],…]}，相邻差值 ≤ tol 视为同一条 */
-  function boardGroups(segs, tol) {
-    if (!segs.length) return [];
-    var s = segs.slice().sort(function (p, q) { return p.k - q.k; });
-    var out = [], cur = null;
-    s.forEach(function (g) {
-      if (!cur || g.k - cur.k > tol) { cur = { k: g.k, iv: [[g.a, g.b]] }; out.push(cur); }
-      else cur.iv.push([g.a, g.b]);
-    });
-    out.forEach(function (o) { o.k = round1(o.k); o.iv = mergeIv(o.iv); });
-    return out;
-  }
-
-  /** 合并重叠或相接的区间 */
-  function mergeIv(list) {
-    var a = list.slice().sort(function (p, q) { return p[0] - q[0]; });
-    var out = [];
-    a.forEach(function (p) {
-      var last = out[out.length - 1];
-      if (last && p[0] <= last[1] + 0.5) last[1] = Math.max(last[1], p[1]);
-      else out.push([p[0], p[1]]);
-    });
-    return out;
-  }
-
-  /** 区间集合与 [lo,hi] 的重叠总长 */
-  function ovLen(iv, lo, hi) {
-    var s = 0;
-    for (var i = 0; i < iv.length; i++) {
-      var a = Math.max(iv[i][0], lo), c = Math.min(iv[i][1], hi);
-      if (c > a) s += c - a;
-    }
-    return s;
-  }
-
-  /** 两条板界共同覆盖的范围：先取重叠区间；重叠被切得很碎时退化为最长的一段 */
-  function perpOf(A, B) {
-    var iv = [];
-    A.forEach(function (p) {
-      B.forEach(function (q) {
-        var lo = Math.max(p[0], q[0]), hi = Math.min(p[1], q[1]);
-        if (hi - lo > 0.4) iv.push([lo, hi]);
-      });
-    });
-    if (!iv.length) return null;
-    iv.sort(function (p, q) { return p[0] - q[0]; });
-    var lo = iv[0][0], hi = iv[iv.length - 1][1], tot = 0;
-    iv.forEach(function (s) { tot += s[1] - s[0]; });
-    if (tot >= (hi - lo) * 0.45) return [lo, hi];
-    var best = iv[0];
-    iv.forEach(function (s) { if (s[1] - s[0] > best[1] - best[0]) best = s; });
-    return [best[0], best[1]];
-  }
-
-  /**
-   * 定位 L/W/D 各自对应的面板。
-   * 返回 { tol, x:[{k,v,a,b,ya,yb}], y:[{k,v,a,b,xa,xb}] }
-   *   x 数组：量的是水平距离（a/b 为 x 范围，ya/yb 为面板 y 范围）
-   *   y 数组：量的是垂直距离（a/b 为 y 范围，xa/xb 为面板 x 范围）
-   *   err：匹配误差（mm），可用于判断这条标注靠不靠谱
-   */
-  V2.locateFaces = function (g, D3) {
-    if (!g || !D3 || !g.b) return null;
-    var L = D3.L, W = D3.W, D = D3.D;
-    if (!L && !W && !D) return null;
-    var b = g.b;
-    var vals = [L, W, D].filter(function (v) { return v && v > 2; });
-    if (!vals.length) return null;
-
-    var tol = Math.max(1.5, Math.min.apply(null, vals) * 0.10, Math.max.apply(null, vals) * 0.008);
-    var GTOL = Math.max(1.0, tol * 0.2);
-    var LIST = [['L', L], ['W', W], ['D', D]];
-    var GX, GY;                               // 竖/横板界，随下面 useLines() 换一组线而重算
-
-    /** 换一组多边形当板界并重算 GX/GY；返回正交线段条数（太少说明这套线撑不起板界） */
-    function useLines(polys) {
-      var ls = axisLines(polys);
-      GX = boardGroups(ls.V, GTOL);           // 竖板界（k = x）
-      GY = boardGroups(ls.H, GTOL);           // 横板界（k = y）
-      return ls.V.length + ls.H.length;
-    }
-
-    /* 一个方向上的「带」：图幅边界 + 各板界坐标，相邻两两成带。
-       关键点：展开图里同一个 x 可能只在上半区是折线、在下半区根本不是，
-       所以不能把所有板界混在一起取相邻间距 —— 必须先在带内筛一遍。 */
-    function bands(G, lo, hi) {
-      var ks = [lo];
-      G.forEach(function (o) { if (o.k > lo + 0.8 && o.k < hi - 0.8) ks.push(o.k); });
-      ks.push(hi);
-      var out = [];
-      for (var i = 0; i + 1 < ks.length; i++) out.push([ks[i], ks[i + 1]]);
-      return out;
-    }
-
-    /** 只有在本带里真的有一段线的板界，才算这个带里的板界 */
-    function active(G, y0, y1) {
-      var need = Math.max(1.2, (y1 - y0) * 0.12);
-      return G.filter(function (o) { return ovLen(o.iv, y0, y1) >= need; });
-    }
-
-    /** 面板另一个方向的范围：先取两条板界的公共覆盖段，
-        再向紧邻的板界贴一下 —— 两条线本身常被切口切断，外沿会略窄 */
-    function growPerp(pr, a, c, crossG) {
-      var win = tol * 3;
-      var nd = Math.max(1.2, Math.abs(c - a) * 0.12);
-      var lo = pr[0], hi = pr[1], below = null, above = null;
-      crossG.forEach(function (o) {
-        if (ovLen(o.iv, a, c) < nd) return;
-        if (o.k < lo - 0.2 && (below === null || o.k > below)) below = o.k;
-        if (o.k > hi + 0.2 && (above === null || o.k < above)) above = o.k;
-      });
-      if (below !== null && lo - below <= win) lo = below;
-      if (above !== null && above - hi <= win) hi = above;
-      return [lo, hi];
-    }
-
-    /** 面板另一个方向是不是也正好等于某个已知尺寸
-        —— 真正的面必然由 长×宽 / 长×高 / 宽×高 构成 */
-    function crossFit(other, key) {
-      for (var i = 0; i < LIST.length; i++) {
-        var p = LIST[i];
-        if (p[0] === key || !p[1] || p[1] < 3) continue;
-        if (Math.abs(other - p[1]) <= Math.max(tol, p[1] * 0.05)) return true;
-      }
-      return false;
-    }
-
-    var cand = { L: [], W: [], D: [] };
-
-    /* axis 'x' → 在某个 y 带里量水平距离；axis 'y' → 在某个 x 带里量垂直距离 */
-    function scan(axis) {
-      var alongG = axis === 'x' ? GX : GY;
-      var crossG = axis === 'x' ? GY : GX;
-      var lo = axis === 'x' ? b[1] : b[0];
-      var hi = axis === 'x' ? b[3] : b[2];
-
-      bands(crossG, lo, hi).forEach(function (bd) {
-        var act = active(alongG, bd[0], bd[1]);
-        for (var i = 0; i + 1 < act.length; i++) {
-          var A = act[i], B = act[i + 1];
-          var d = r2(B.k - A.k);
-          if (!(d > 2)) continue;
-          /* 面板另一个方向的初值：两条板界的公共覆盖段 ∩ 本带
-             （公共覆盖段常跨到相邻面/翼片上，用带夹一下才不会标到别的面板上） */
-          var pv = perpOf(A.iv, B.iv);
-          if (pv) {
-            var l2 = Math.max(pv[0], bd[0]), h2 = Math.min(pv[1], bd[1]);
-            if (h2 - l2 > 1) pv = [l2, h2];
-          } else pv = bd;
-          var pr = growPerp(pv, A.k, B.k, crossG);
-          var pw = r2(pr[1] - pr[0]);
-          LIST.forEach(function (p) {
-            if (!p[1] || p[1] < 3) return;
-            var e = Math.abs(d - p[1]);
-            if (e > tol) return;
-            cand[p[0]].push({
-              k: p[0], v: p[1], e: e, axis: axis,
-              a: r2(A.k), c: r2(B.k), p0: r2(pr[0]), p1: r2(pr[1]),
-              fit: crossFit(pw, p[0])
-            });
-          });
-        }
-      });
-    }
-
-    /** 匹配误差优先；误差相同时取「另一方向也是已知尺寸」的那块（更像真实的面） */
-    function bestOf(list) {
-      if (!list.length) return null;
-      return list.slice().sort(function (p, q) {
-        return (p.e + (p.fit ? 0 : tol)) - (q.e + (q.fit ? 0 : tol));
-      })[0];
-    }
-
-    function makeItem(k, c) {
-      return c.axis === 'x'
-        ? { k: k, v: c.v, a: c.a, b: c.c, ya: c.p0, yb: c.p1, err: c.e }
-        : { k: k, v: c.v, a: c.a, b: c.c, xa: c.p0, xb: c.p1, err: c.e };
-    }
-
-    var out = { tol: tol, x: [], y: [] };
-    var used = {};
-    var placed = {};                  // L/W/D 是否已经有着落（含被合并的情形）
-
-    /**
-     * 跑一轮挑尺寸：先把候选扫出来，再逐一号入座。
-     * @param only    ['L','D'] 只补这几个尺寸；不传 = 三个都来
-     * @param keepOld true = 落到别人已占的位置就整条放弃（补回合专用，不抢第一轮的结果）
-     */
-    function pick(only, keepOld) {
-      cand = { L: [], W: [], D: [] };
-      scan('x');
-      scan('y');
-      ['L', 'W', 'D'].forEach(function (k) {
-        if (only && only.indexOf(k) < 0) return;
-        if (placed[k]) return;
-        var c = bestOf(cand[k]);
-        if (!c) return;
-        var key = c.axis + '|' + c.a + '|' + c.c;
-        var prev = used[key];
-        if (prev) {
-          /* 两个尺寸落到同一段间距上（典型是正方盒 L=W）：
-             值相同 → 合并成「长·宽」；值不同 → 只留匹配更准的那条，绝不标错 */
-          if (Math.abs(prev.v - c.v) <= 0.15) {
-            prev.ks = prev.ks || [prev.k];
-            if (prev.ks.indexOf(k) < 0) prev.ks.push(k);
-            placed[k] = true;
-          } else if (!keepOld && c.e + 1e-9 < prev.err) {
-            var arr = c.axis === 'x' ? out.x : out.y;
-            var idx = arr.indexOf(prev);
-            var it = makeItem(k, c);
-            if (idx >= 0) arr[idx] = it;
-            used[key] = it;
-            placed[k] = true;
-          }
-          return;
-        }
-        var item = makeItem(k, c);
-        used[key] = item;
-        placed[k] = true;
-        (c.axis === 'x' ? out.x : out.y).push(item);
-      });
-    }
-
-    var creases = (g.k && g.k.length) ? g.k : (g.c || []);
-    var nSeg = useLines(creases);
-    /* 有些盒型的压痕几乎全是斜线/弧线，抽不出几条正交线段（板界无从谈起）。
-       这种时候第一轮就把切割线一起算 —— 外轮廓也是板界，代价是判定略松。 */
-    if (nSeg < 6 && g.k && g.c && g.c.length) useLines(g.k.concat(g.c));
-
-    pick();
-
-    /* 补一轮：第一轮没能定位到的尺寸（最常见的就是缺「高」），把切割线也算作板界再试。
-       ❗ 只补落空的尺寸、且不许顶掉第一轮的结果 —— 所以 JP008 这类能多标出一条高，
-       而 E055/A038 这些三边本来就齐的一个都不会动。 */
-    var missed = ['L', 'W', 'D'].filter(function (k) {
-      var v = LIST.filter(function (p) { return p[0] === k; })[0][1];
-      return v && v >= 3 && !placed[k];
-    });
-    if (missed.length && g.k && g.c && g.c.length) {
-      useLines(g.k.concat(g.c));
-      pick(missed, true);
-    }
-
-    return out;
-  };
-
-  /** 实心三角箭头（fill 用属性写，屏幕/导出都生效，且不会破坏 style 属性） */
+  /** 实心三角箭头：箭尖在 (x,y)，朝 (dx,dy)；fill 用属性写（屏幕与导出都生效，
+      且不会被样式表里的 fill 覆盖 —— CSS 是覆盖 presentation attribute 的，
+      所以样式表里只准设 fill-opacity，不许设 fill） */
   function tri(x, y, dx, dy, al, color, cls) {
     var w = al * 0.34, p;
     if (dx) p = [[x, y], [x - dx * al, y - w], [x - dx * al, y + w]];
@@ -563,130 +323,186 @@
     return '<path class="' + cls + '" fill="' + color + '" stroke="none" d="' + d + '"/>';
   }
 
-  /** 面板底色 + 尺寸线 + 标注牌 */
-  function markLayer(b, fs, opts) {
-    var faces = opts.faces || V2.locateFaces(opts.g || { b: b, k: [], c: [] }, opts.dims);
-    MARK_BOX = null;                 // 对外暴露标注牌的外沿，供 V2.svg 撑开画布
-    if (!faces || (!faces.x.length && !faces.y.length)) return '';
+  function rmLayer(g, fs, opts) {
+    RM_BOX = null;
+    var R = opts.rm || {};
+    var list = (g && g.rm) || [];
+    if (!list.length) return '';
+
     var unit = opts.unit === 'in' ? 'in' : 'mm';
-    /* 标注值口径：定位用的是制造尺寸，标注文字按当前口径做一次偏移 */
-    var off = +opts.markOffset || 0;
-    var al = fs * 0.8;
+    var choose = Math.max(1, Math.min(3, +(R.choose || 3)));
+    var txtMode = R.txtMode == null ? 2 : +R.txtMode;
+    var onMain = R.main !== false;
+    var onOth = R.oth === true;
+    var U = fs * RM_PX;
+    var al = fs * RM_ARROW;
     var tfs = fs * 0.95;
     var out = '';
-    var chips = [];                  // 已摆下的标注牌，新牌子要避开它们
-    var filled = {};                 // 同一块面板只铺一层底色（长宽可能共用一块面板）
 
-    /** 标注牌文字，如「长 120 mm」「长·宽 100 mm」 */
-    function labelOf(m) {
-      var names = m.ks && m.ks.length > 1
-        ? m.ks.map(function (k) { return V2.MARK_NAME[k] || k; }).join('·')
-        : (V2.MARK_NAME[m.k] || m.k);
-      return names + ' ' + V2.unitVal(m.v + off, unit) + (unit === 'in' ? ' in' : ' mm');
-    }
-
-    /* 牌子必须压在自己的尺寸线上（否则箭头又和文字离远了）。
-       所以只允许沿尺寸线滑动来避让；滑不动就接受重叠，绝不为了摆开而脱离线。 */
-    function placeChip(m, vertical, cw, ch) {
-      /* 沿尺寸线的中点 = (a+b)/2；尺寸线本身的位置 = 面板横向/纵向中点。
-         横向尺寸的 a/b 是 x，纵向尺寸的 a/b 是 y —— 两者不能弄反。 */
-      var along = (m.a + m.b) / 2;
-      var cross = vertical ? (m.xa + m.xb) / 2 : (m.ya + m.yb) / 2;
-      var TS = [0.5, 0.32, 0.68, 0.2, 0.8, 0.12, 0.88];
-      var px = vertical ? cross : along;
-      var py = vertical ? along : cross;
-      var i, j;
-      for (i = 0; i < TS.length; i++) {
-        if (vertical) {
-          py = m.a + (m.b - m.a) * TS[i];
-          py = Math.max(b[1] + ch / 2, Math.min(b[3] - ch / 2, py));
-        } else {
-          px = m.a + (m.b - m.a) * TS[i];
-          px = Math.max(b[0] + cw / 2, Math.min(b[2] - cw / 2, px));
-        }
-        var hit = false;
-        for (j = 0; j < chips.length; j++) {
-          var q = chips[j];
-          if (px - cw / 2 < q.x1 && px + cw / 2 > q.x0 &&
-              py - ch / 2 < q.y1 && py + ch / 2 > q.y0) { hit = true; break; }
-        }
-        if (!hit) break;
-      }
-      chips.push({ x0: px - cw / 2, y0: py - ch / 2, x1: px + cw / 2, y1: py + ch / 2 });
-      if (!MARK_BOX) MARK_BOX = { x0: px - cw / 2, y0: py - ch / 2, x1: px + cw / 2, y1: py + ch / 2 };
+    /** 记下标注占用的范围，V2.svg 据此把画布撑开 */
+    function box(x0, y0, x1, y1) {
+      if (!RM_BOX) RM_BOX = { x0: x0, y0: y0, x1: x1, y1: y1 };
       else {
-        MARK_BOX.x0 = Math.min(MARK_BOX.x0, px - cw / 2);
-        MARK_BOX.y0 = Math.min(MARK_BOX.y0, py - ch / 2);
-        MARK_BOX.x1 = Math.max(MARK_BOX.x1, px + cw / 2);
-        MARK_BOX.y1 = Math.max(MARK_BOX.y1, py + ch / 2);
+        RM_BOX.x0 = Math.min(RM_BOX.x0, x0); RM_BOX.y0 = Math.min(RM_BOX.y0, y0);
+        RM_BOX.x1 = Math.max(RM_BOX.x1, x1); RM_BOX.y1 = Math.max(RM_BOX.y1, y1);
       }
-      return { mx: px, my: py };
     }
 
-    function draw(m, vertical) {
-      var color = V2.MARK_COLOR[m.k] || V2.COLOR.make;
-      var x = vertical ? m.xa : m.a;
-      var w = vertical ? (m.xb - m.xa) : (m.b - m.a);
-      var y = vertical ? m.a : m.ya;
-      var h = vertical ? (m.b - m.a) : (m.yb - m.ya);
-      if (!(w > 0) || !(h > 0)) return '';
+    function lineAttr(color) {
+      return opts.standalone
+        ? ' style="fill:none;stroke:' + color + ';stroke-width:' + (opts.sw || V2.SW_MM).dim +
+          ';stroke-linejoin:round;stroke-linecap:round"'
+        : ' class="rmline" stroke="' + color + '"';
+    }
 
-      var text = labelOf(m);
+    /** 标注文字（屏幕模式加白描边，压在线上也看得清） */
+    function label(cx, cy, str, color) {
+      if (!str) return '';
+      var w = textW(str, tfs);
+      box(cx - w / 2, cy - tfs * 0.75, cx + w / 2, cy + tfs * 0.45);
+      var css = 'font-family:' + FONT + ';font-size:' + round1(tfs) + 'px;font-weight:600;fill:' + color;
+      return '<text' + clsAttr(opts, 'rmtxt', css) +
+        ' x="' + round1(cx) + '" y="' + round1(cy + tfs * 0.35) + '" font-size="' + round1(tfs) +
+        '" font-weight="600" text-anchor="middle" fill="' + color + '">' + esc(str) + '</text>';
+    }
+
+    /** 当前口径下这条标注要显示的值 */
+    function valOf(r) {
+      var v = r[4];
+      if (!Array.isArray(v)) return v;
+      var x = v[choose - 1];
+      return x == null ? v[v.length - 1] : x;
+    }
+
+    /** 文字内容：0 代码=数值 / 1 只要代码 / 2 只要数值 / 3 不标注（上游 txtMode） */
+    function textOf(r) {
+      var isMain = Array.isArray(r[4]);
+      var code = isMain ? String(r[0]).toUpperCase() : String(r[0]);
+      var v = V2.unitVal(valOf(r), unit);
+      if (txtMode === 1) return code;
+      if (txtMode === 2) return v;
+      if (txtMode === 3) return '';
+      return code + '=' + v;
+    }
+
+    /** 水平尺寸（x / xb）—— 线从 (x,y) 到 (x+len,y)，文字在线中点、上/下偏 */
+    function drawX(r, len, str, color, isMain) {
+      var x = +r[1] || 0, y = +r[2] || 0;
+      var ti = isMain ? choose : 3;
+      var sl = (ti === 1 ? 5 : ti === 2 ? -5 : 0) * U;
+      var x0 = x + sl, x1 = x + len - sl;
+      if (x1 < x0) { var t = x0; x0 = x1; x1 = t; }
       var o = '';
-
-      // 面板底色（淡）—— 长与宽共用一块面时只铺一层，避免叠色发深
-      var fk = round1(x) + '|' + round1(y) + '|' + round1(w) + '|' + round1(h);
-      if (!filled[fk]) {
-        filled[fk] = 1;
-        o += '<rect class="markfill" fill="' + color + '" fill-opacity="0.08" x="' + round1(x) +
-          '" y="' + round1(y) + '" width="' + round1(w) + '" height="' + round1(h) + '" rx="' +
-          round1(Math.min(w, h) * 0.05) + '"/>';
-      }
-
-      /* 尺寸线 + 双箭头（箭尖贴面板边，箭头朝内）。
-         关键：尺寸线必须落在标注牌的中心上，否则箭头会和文字离得很远。
-         · 纵向尺寸 → 线画在面板的「横向中点」(xa..xb)，不能把 y 的中点当成 x 用
-         · 横向尺寸 → 线画在面板的「纵向中点」(ya..yb) */
-      var lw = opts.standalone ? (opts.sw || V2.SW_MM).dim : '';
-      var linePos;
-      if (vertical) {
-        linePos = (m.xa + m.xb) / 2;
-        o += '<line class="markline" x1="' + round1(linePos) + '" y1="' + round1(m.a) +
-          '" x2="' + round1(linePos) + '" y2="' + round1(m.b) + '" stroke="' + color + '"' +
-          (lw ? ' stroke-width="' + lw + '"' : '') + '/>';
-        o += tri(linePos, m.a, 0, -1, al, color, 'markarrow');
-        o += tri(linePos, m.b, 0, 1, al, color, 'markarrow');
+      /* 长度够（≥10px 等效）就画整条尺寸线 + 两端朝外的箭头；
+         太短画不下线，就把箭头改朝内，免得两个箭头糊在一起 */
+      if (x1 - x0 >= 10 * U) {
+        o += '<line x1="' + round1(x0) + '" y1="' + round1(y) + '" x2="' + round1(x1) +
+          '" y2="' + round1(y) + '"' + lineAttr(color) + '/>';
+        o += tri(x0, y, -1, 0, al, color, 'rmarrow');
+        o += tri(x1, y, 1, 0, al, color, 'rmarrow');
       } else {
-        linePos = (m.ya + m.yb) / 2;
-        o += '<line class="markline" x1="' + round1(m.a) + '" y1="' + round1(linePos) +
-          '" x2="' + round1(m.b) + '" y2="' + round1(linePos) + '" stroke="' + color + '"' +
-          (lw ? ' stroke-width="' + lw + '"' : '') + '/>';
-        o += tri(m.a, linePos, -1, 0, al, color, 'markarrow');
-        o += tri(m.b, linePos, 1, 0, al, color, 'markarrow');
+        o += tri(x0, y, 1, 0, al, color, 'rmarrow');
+        o += tri(x1, y, -1, 0, al, color, 'rmarrow');
       }
+      box(x0 - al, y - al, x1 + al, y + al);
+      var down = String(r[3]) === 'xb';
+      return o + label((x0 + x1) / 2, y + (down ? 1 : -1) * (fs * 0.5 + 4 * U), str, color);
+    }
 
-      // 标注牌（白底 + 彩色描边），压在尺寸线上
-      var cw = textW(text, tfs) + tfs * 1.4;
-      var chh = tfs * 1.86;
-      var cp = placeChip(m, vertical, cw, chh);
+    /** 垂直尺寸（y / yl）—— 线从 (x,y) 到 (x,y+len)，文字在线的右/左侧 */
+    function drawY(r, len, str, color, isMain) {
+      var x = +r[1] || 0, y = +r[2] || 0;
+      var ti = isMain ? choose : 3;
+      var sl = (ti === 1 ? 5 : ti === 2 ? -5 : 0) * U;
+      var y0 = y + sl, y1 = y + len - sl;
+      if (y1 < y0) { var t = y0; y0 = y1; y1 = t; }
+      var o = '';
+      if (y1 - y0 >= 10 * U) {
+        o += '<line x1="' + round1(x) + '" y1="' + round1(y0) + '" x2="' + round1(x) +
+          '" y2="' + round1(y1) + '"' + lineAttr(color) + '/>';
+        o += tri(x, y0, 0, -1, al, color, 'rmarrow');
+        o += tri(x, y1, 0, 1, al, color, 'rmarrow');
+      } else {
+        o += tri(x, y0, 0, 1, al, color, 'rmarrow');
+        o += tri(x, y1, 0, -1, al, color, 'rmarrow');
+      }
+      box(x - al, y0 - al, x + al, y1 + al);
+      var th = (textW(str, tfs) + 24 * U) / 2;
+      var left = String(r[3]) === 'yl';
+      return o + label(x + (left ? -th : th), y + len / 2, str, color);
+    }
 
-      o += '<rect class="markchip" x="' + round1(cp.mx - cw / 2) + '" y="' + round1(cp.my - chh / 2) +
-        '" width="' + round1(cw) + '" height="' + round1(chh) + '" rx="' + round1(chh * 0.32) +
-        '" fill="#ffffff" stroke="' + color + '"' +
-        (opts.standalone ? ' stroke-width="' + (opts.sw || V2.SW_MM).dim + '"' : '') + '/>';
-      o += '<text class="marktxt" x="' + round1(cp.mx) + '" y="' + round1(cp.my + tfs * 0.36) +
-        '" font-size="' + round1(tfs) + '" font-weight="700" text-anchor="middle" fill="' +
-        color + '"' + (opts.standalone ? ' font-family="' + FONT.replace(/"/g, "'") + '"' : '') +
-        '>' + esc(text) + '</text>';
+    /** 圆角半径（r1~r4）—— 沿 45° 对角方向引出，末端折一段水平线放文字 */
+    function drawR(r, len, str, color) {
+      var x = +r[1] || 0, y = +r[2] || 0;
+      var t = String(r[3]);
+      var sx = /r1|r4/.test(t) ? 1 : -1;          // 对角方向的水平分量
+      var sy = /r1|r2/.test(t) ? -1 : 1;          // 对角方向的垂直分量（y 向下）
+      var et = len * 1.41421356 / 2;              // 半径投到 45° 方向
+      var ot = et + 20 * U;                       // 引出终点（官方再外推 20px）
+      var ht = textW(str, tfs) + 20 * U;          // 文字横向引出距离
+      var wt = (/r2|r3/.test(t) ? -1 : 1) * 10 * U;   // 45° 线上的短划（官方 r2/r3 取反向）
+      var qx = x + sx * et, qy = y + sy * et;     // 对角点：贴在圆角上
+      var ax = qx - sx * wt, ay = qy - sy * wt;   // 45° 短划两端
+      var bx = qx + sx * wt, by = qy + sy * wt;
+      var cx = bx + sx * ht;                      // 折向水平，末端放文字
+      var pts = [ax, ay, bx, by, cx, by].map(round1).join(',');
+      var o = opts.standalone
+        ? '<polyline points="' + pts + '" style="fill:none;stroke:' + color + ';stroke-width:' +
+          (opts.sw || V2.SW_MM).dim + ';stroke-linejoin:round"/>'
+        : '<polyline class="rmline" points="' + pts + '" fill="none" stroke="' + color + '"/>';
+      o += tri(qx, qy, sx, sy, al, color, 'rmarrow');
+      o += label(bx + sx * ht / 2, by - fs * 0.5, str, color);
+      box(Math.min(x, cx) - al, Math.min(qy, by) - al,
+        Math.max(x, cx) + al, Math.max(qy, by) + al);
       return o;
     }
 
-    /* 按 长→宽→高 的顺序摆牌子：先来的占中线，后来的自动滑开 */
-    var all = [];
-    faces.x.forEach(function (m) { all.push({ m: m, v: false }); });
-    faces.y.forEach(function (m) { all.push({ m: m, v: true }); });
-    all.sort(function (p, q) { return (MARK_ORDER[p.m.k] || 0) - (MARK_ORDER[q.m.k] || 0); });
-    all.forEach(function (t) { out += draw(t.m, t.v); });
+    /** 角度（a0/a90/a180/a270、ac*）—— 两条角边方向各一支切向箭头 */
+    function drawA(r, len, str, color) {
+      var x = +r[1] || 0, y = +r[2] || 0;
+      var t = String(r[3]);
+      var acw = t.charAt(1) === 'c';
+      var base = parseFloat(t.substr(acw ? 2 : 1));
+      if (!isFinite(base) || !isFinite(len)) return '';
+      var a0 = acw ? base - len : base;           // 起始角
+      var a1 = acw ? base : base + len;           // 终止角
+      var c = a0 * Math.PI / 180, w = a1 * Math.PI / 180;
+      var Rr = 20 * U;                            // 距锚点 20px 处
+      var p0 = [x + Rr * Math.cos(c), y - Rr * Math.sin(c)];
+      var p1 = [x + Rr * Math.cos(w), y - Rr * Math.sin(w)];
+      var o = '';
+      o += '<line x1="' + round1(x) + '" y1="' + round1(y) + '" x2="' + round1(p0[0]) +
+        '" y2="' + round1(p0[1]) + '"' + lineAttr(color) + '/>';
+      o += '<line x1="' + round1(x) + '" y1="' + round1(y) + '" x2="' + round1(p1[0]) +
+        '" y2="' + round1(p1[1]) + '"' + lineAttr(color) + '/>';
+      /* 箭头朝切向（角边 + 90° / -90°），像弧的两端各一个小箭头 */
+      o += tri(p0[0], p0[1], Math.cos(c + Math.PI / 2), -Math.sin(c + Math.PI / 2), al, color, 'rmarrow');
+      o += tri(p1[0], p1[1], Math.cos(w - Math.PI / 2), -Math.sin(w - Math.PI / 2), al, color, 'rmarrow');
+      o += label(x + Rr * Math.cos(c) + textW(str, tfs) * Math.cos(c),
+        y - Rr * Math.sin(c) - fs * Math.sin(c), str, color);
+      box(x - Rr - al, y - Rr - al, x + Rr + al, y + Rr + al);
+      return o;
+    }
+
+    for (var i = 0; i < list.length; i++) {
+      var r = list[i];
+      if (!r || r.length < 5) continue;
+      var isMain = Array.isArray(r[4]);
+      if (isMain ? !onMain : !onOth) continue;
+      var type = String(r[3] || '');
+      if (!type) continue;
+      var str = textOf(r);
+      var len = rmLenOf(r);
+      var color = isMain ? V2.RM_COLOR.main : V2.RM_COLOR.oth;
+      var k = type.charAt(0);
+      var o = '';
+      if (k === 'x') o = drawX(r, len, str, color, isMain);
+      else if (k === 'y') o = drawY(r, len, str, color, isMain);
+      else if (k === 'r') o = drawR(r, len, str, color);
+      else if (k === 'a') o = drawA(r, len, str, color);
+      out += o;
+    }
     return out;
   }
 
