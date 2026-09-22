@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 384" width="384" height="384">
+  <title>通用包装盒型库</title>
+  <polygon points="192,36 324,102 192,234 60,102" fill="#f5a742"/>
+  <polygon points="60,102 192,234 192,348 60,216" fill="#de7a00"/>
+  <polygon points="324,102 192,234 192,348 324,216" fill="#a85c00"/>
+  <g stroke="#402400" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none">
+  <line x1="192" y1="36" x2="324" y2="102"/>
+  <line x1="324" y1="102" x2="192" y2="234"/>
+  <line x1="192" y1="234" x2="60" y2="102"/>
+  <line x1="60" y1="102" x2="192" y2="36"/>
+  <line x1="60" y1="102" x2="60" y2="216"/>
+  <line x1="192" y1="234" x2="192" y2="348"/>
+  <line x1="324" y1="102" x2="324" y2="216"/>
+  <line x1="60" y1="216" x2="192" y2="348"/>
+  <line x1="192" y1="348" x2="324" y2="216"/>
+  </g>
+</svg>

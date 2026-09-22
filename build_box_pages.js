@@ -311,6 +311,9 @@ function renderPage(o) {
     '<meta name="description" content="' + esc(desc) + '">\n' +
     '<meta name="keywords" content="' + esc([id, id + '刀模', id + '盒型'].concat(tags.slice(0, 6)).join(',')) + '">\n' +
     '<link rel="canonical" href="' + esc(url) + '">\n' +
+    // 页面在 /box/<ID>/ 下，图标要退两级（站点根 favicon.ico 对子目录无效）
+    '<link rel="icon" href="../../favicon.ico" sizes="any">\n' +
+    '<link rel="icon" href="../../favicon.svg" type="image/svg+xml">\n' +
     '<link rel="stylesheet" href="../box.css">\n' +
     '<meta property="og:type" content="article">\n' +
     '<meta property="og:title" content="' + esc(title) + '">\n' +
@@ -379,6 +382,9 @@ function renderIndex(ids, byCat, cateName, meta) {
     '<title>纸盒盒型库 - ' + total + ' 种盒型刀模图在线浏览</title>\n' +
     '<meta name="description" content="收录 ' + total + ' 种纸盒盒型刀模图，涵盖管式盒、盘式盒、天地盖、抽屉盒、礼盒、纸箱等分类，每种盒型均提供展开图、可调参数与结构标签，支持导出 SVG / DXF / PDF。">\n' +
     '<link rel="canonical" href="' + BASE + '/box/">\n' +
+    // 本页在 /box/ 下，退一级取站点根图标
+    '<link rel="icon" href="../favicon.ico" sizes="any">\n' +
+    '<link rel="icon" href="../favicon.svg" type="image/svg+xml">\n' +
     '<link rel="stylesheet" href="box.css">\n' +
     '</head>\n<body>\n' +
     '<nav class="crumb"><a href="../../index.html">纸盒刀模设计器</a> &rsaquo; <strong>盒型库</strong></nav>\n' +

@@ -646,7 +646,13 @@
 
   /* 下拉型参数（如「左右插孔数」1/2/3）渲染成 select，其余仍是数字输入 */
   function paramHtml(p) {
-    var label = p.d || C.labels[p.n] || p.n;
+    /* 标签 = 上游中文名（或 catalog 标签表）优先，后面跟一个参数代码小标。
+       代码是刀模图 / 上游求解串（de.op）里用的名字（如 d2 / of / l1），
+       光看中文名对不上图上的标注，所以两个一起给。
+       若没有中文名（label 退化成代码本身），就不重复显示。 */
+    var code = String(p.n == null ? '' : p.n);
+    var labels = (C && C.labels) || {};
+    var label = p.d || labels[p.n] || code;
     var n = V2.esc(p.n);
     var body;
     if (p.dl && p.dl.length) {
@@ -659,7 +665,10 @@
       body = '<input type="number" step="any" data-n="' + n + '" value="' + V2.esc(p.v) + '">';
     }
     return '<div class="param">' +
-      '<label title="' + n + '">' + V2.esc(label) + '</label>' +
+      '<label title="' + n + '">' +
+        '<span class="pname">' + V2.esc(label) + '</span>' +
+        (code && label !== code ? '<span class="pcode">' + V2.esc(code) + '</span>' : '') +
+      '</label>' +
       body + '</div>';
   }
 

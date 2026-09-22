@@ -70,6 +70,7 @@ DieCut Designer 是一个纯前端（无框架）的刀模设计工具，内置 
 ├── index.html                # 盒型库列表页（SEO 计数由生成器回写）
 ├── box.html                  # 盒型详情页（?id=<盒型ID>，noindex）
 ├── robots.txt / sitemap.xml  # SEO（sitemap 由生成器产出）
+├── favicon.ico / favicon.svg # 站点图标（`node tools/make-favicon.mjs` 生成）
 ├── assets/                   # 前端运行时
 │   ├── common.js             # V2 公共运行时
 │   ├── list.js               # 列表页逻辑
@@ -98,6 +99,7 @@ DieCut Designer 是一个纯前端（无框架）的刀模设计工具，内置 
 │   ├── install-hooks.mjs     # 安装 pre-push 钩子
 │   ├── hooks/pre-push.mjs    # 推送即部署 Worker + 校验资源版本串
 │   ├── bump-assets.mjs       # 写静态资源缓存版本串 ?v=<内容哈希>
+│   ├── make-favicon.mjs      # 生成 favicon.ico / favicon.svg
 │   └── fetch_thumbs.py       # 缩略图抓取
 ├── v1/                       # 已废弃的自研 3D 折叠路线（保留备查）
 ├── FEFCO/                    # FEFCO 盒型参考资料
@@ -203,6 +205,21 @@ node tools/bump-assets.mjs --check
 - `common.js` / `detail.js` 会把版本串**继承**给动态加载的 `catalog.js`、`geo/NN.js`、`view3d.js`，全站一次发版一起换
 - **忘了跑也不会坏**：pre-push 钩子会检测到「改了脚本但 `?v=` 没同步」并醒目告警（不阻塞推送）
 - 本地 `server.js` 已做 `req.url.split('?')[0]`，带版本串照样能跑
+
+### 站点图标（favicon）
+
+```bash
+node tools/make-favicon.mjs   # → favicon.ico（16/32/48）+ favicon.svg
+```
+
+图案是等轴测立方体（呼应「展开图折成立体盒」），配色沿用刀模标注的主尺寸橙 `#de7a00`。
+改图案就改 `tools/make-favicon.mjs` 里的顶点/颜色常量后重跑；它是**唯一真源**，
+不要手改那两个产物文件。
+
+> ⚠️ 站点部署在 `/diecut/` 子路径下，浏览器**只会自动请求域名根** `/favicon.ico`
+> （那个位置不归我们管）。所以两个 HTML 必须**显式**写 `<link rel="icon">`，
+> 光把文件放在站点目录里是不生效的。`box/<ID>/` 这类子目录页面还要多退一级
+> （生成器 `build_box_pages.js` 里已写成 `../../favicon.ico`）。
 
 
 ## 已知约束
