@@ -624,7 +624,10 @@ button, input, select { font-family: inherit; font-size: inherit; color: inherit
   /* 常驻留出滚动条位置：否则「放大→适应」时滚动条的有无会改变可用宽度，
      导致 100% 的贴合尺寸不可复现 */
   scrollbar-gutter: stable;
+  /* 画布可按住拖动平移（detail.js 的鼠标手势），光标给出「可抓取」的暗示 */
+  cursor: grab;
 }
+.canvas.is-pan { cursor: grabbing; }
 
 /*
   注意：这里用 margin:auto 而不是 justify-content:center——

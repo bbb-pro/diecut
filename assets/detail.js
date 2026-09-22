@@ -252,24 +252,69 @@
 
   function r1(v) { return Math.round(v * 100) / 100; }
 
-  /* Ctrl + 滚轮缩放（以光标位置为中心） */
+  /* ==================== 画布鼠标手势 ====================
+     按看图类工具的肌肉记忆来：
+       · 滚轮       → 缩放（以光标位置为焦点，不再需要按住 Ctrl）
+       · 按住拖动   → 平移（左键或中键）
+       · Shift+滚轮 → 放行给浏览器（横向滚动，需要时仍可用）
+     原先只有「Ctrl+滚轮缩放」，平移只能拖滚动条。 */
   (function () {
     var h = host();
     if (!h) return;
+
+    /* —— 滚轮缩放 —— */
     h.addEventListener('wheel', function (e) {
       if (in3D) return;                       // 3D 模式下滚轮归 OrbitControls
-      if (!e.ctrlKey && !e.metaKey) return;
+      if (e.shiftKey) return;                 // Shift+滚轮 留给浏览器做横向滚动
       e.preventDefault();
-      var rect = h.getBoundingClientRect();
-      var rx = (h.scrollLeft + e.clientX - rect.left) / Math.max(1, h.scrollWidth);
-      var ry = (h.scrollTop + e.clientY - rect.top) / Math.max(1, h.scrollHeight);
-      var next = Math.max(0.25, Math.min(4, r1(zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15))));
+
+      /* 按 deltaY 连续缩放：鼠标滚轮一格 ≈ ±20%，触控板/精密滚轮则平滑跟随。
+         1.6 倍限幅防止「一滚就飞」。 */
+      var d = e.deltaY;
+      if (e.deltaMode === 1) d *= 16;          // 行模式（部分 Firefox）
+      else if (e.deltaMode === 2) d *= 100;    // 页模式
+      var f = Math.exp(-d * 0.0018);
+      f = Math.min(1.6, Math.max(1 / 1.6, f));
+
+      var next = Math.max(0.25, Math.min(4, r1(zoom * f)));
       if (next === zoom) return;
+
+      var rect = h.getBoundingClientRect();
+      var px = e.clientX - rect.left, py = e.clientY - rect.top;
+      /* 记下光标在「可滚动内容」里的比例 —— 缩放前后这个比例不变，
+         视觉上就是光标底下那个点纹丝不动，缩放围绕它进行。 */
+      var rx = (h.scrollLeft + px) / Math.max(1, h.scrollWidth);
+      var ry = (h.scrollTop + py) / Math.max(1, h.scrollHeight);
+
       zoom = next;
       applyZoom(false);
-      h.scrollLeft = rx * h.scrollWidth - (e.clientX - rect.left);
-      h.scrollTop = ry * h.scrollHeight - (e.clientY - rect.top);
+      h.scrollLeft = rx * h.scrollWidth - px;
+      h.scrollTop = ry * h.scrollHeight - py;
     }, { passive: false });
+
+    /* —— 按住拖动平移（左键 / 中键）—— */
+    var drag = null;
+    h.addEventListener('mousedown', function (e) {
+      if (in3D) return;
+      if (e.button !== 0 && e.button !== 1) return;
+      var t = e.target;
+      if (t && t.closest && t.closest('input,select,textarea,a,button')) return;
+      e.preventDefault();                    // 别顺手选中图上的文字；中键也别触发自动滚动
+      drag = { x: e.clientX, y: e.clientY, sl: h.scrollLeft, st: h.scrollTop };
+      h.classList.add('is-pan');
+    });
+    document.addEventListener('mousemove', function (e) {
+      if (!drag) return;
+      h.scrollLeft = drag.sl - (e.clientX - drag.x);
+      h.scrollTop = drag.st - (e.clientY - drag.y);
+    });
+    function endPan() {
+      if (!drag) return;
+      drag = null;
+      h.classList.remove('is-pan');
+    }
+    document.addEventListener('mouseup', endPan);
+    window.addEventListener('blur', endPan);   // 拖到窗口外松手也要收尾
   })();
 
   var _rsT = null;
@@ -600,6 +645,64 @@
       if (!dimMode || dimMode[k].mode === 'edit') return;
       dims[k] = numOr(G.ce[k.toLowerCase()]);
     });
+  }
+
+  /* 上游不是「照单全收」的：越界值会被钳到盒型允许的范围，关联参数还会被按盒型
+     公式一并重算。实测 JP008（长100/高20/高2 80/高低位10/长1 95/高1 40/半径40）：
+       · 长1   ≤ 长 − 4mm          传 200 → 实际 96
+       · 半径 ≤ 长1 ÷ 2            传 500 → 实际 47.5
+       · 高 / 高2 ≥ 10mm           传 1 或 0 → 实际 10
+       · 高低位 ≤ 长               传 999 → 实际 100
+       · 纸厚 ≤ 3mm                传 99 → 实际 3
+       · 改「长」会连带重算 长1/半径；改「高2」会连带重算 高1
+     所以每次重算回来，都要把**上游的实际生效值**写回输入框 ——
+     否则界面显示 200、刀模却按 96 画，用户以为「改了没用」。
+     返回被改动的项，供状态栏提示。 */
+  function syncPmsFromCe() {
+    var fixed = [];
+    var inp = document.querySelectorAll('#otherParams .param input, #otherParams .param select');
+    Array.prototype.forEach.call(inp, function (el) {
+      var n = el.dataset.n;
+      if (!n) return;
+      var key = String(n).toUpperCase();
+      var v = (G.ce || {})[String(n).toLowerCase()];
+      if (v == null || v === '' || String(v) === String(el.value)) return;
+      if (document.activeElement === el) return;   // 正在输入的框别打断（失焦后自然对齐）
+      /* 下拉项：上游若回了个没在选项里的值（选项表与求解器版本对不上时会发生），
+         直接 el.value = v 会静默变成空选中 —— 宁可不改，也别把界面弄成空的。 */
+      if (el.tagName === 'SELECT') {
+        var hit = Array.prototype.some.call(el.options, function (o) { return String(o.value) === String(v); });
+        if (!hit) return;
+      }
+      el.value = v;
+      /* 只有「用户自己改过这一项」时才把 userPms 一起对齐：
+         上游的**派生重算**（如改长导致长1变小）不能当成用户意图固化，
+         否则用户把长改回去，长1 也回不去了。 */
+      if (Object.prototype.hasOwnProperty.call(userPms, key)) userPms[key] = v;
+      fixed.push(key + ' ' + el.value);
+    });
+
+    /* 主尺寸也可能被钳制（高 传 1 → 上游用 10）。只回填可编辑的那种；
+       只读项（方盒的宽之类）上面 syncLockedDims() 已经同步过了。 */
+    ['L', 'W', 'D'].forEach(function (k) {
+      if (!dimMode || dimMode[k].mode !== 'edit') return;
+      var nv = numOr(G.ce[k.toLowerCase()]);
+      if (isFinite(nv) && nv > 0 && Math.abs(nv - dims[k]) > 1e-6) {
+        dims[k] = nv;
+        fixed.push(k + ' ' + nv);
+      }
+    });
+
+    /* 纸板厚：用户主动改过才回填（首屏保持「显示源参数 CAL 以复现原始刀模」的老约定） */
+    if (Object.prototype.hasOwnProperty.call(userPms, 'CAL') && G.ce.cal != null
+      && String(G.ce.cal) !== String(userPms.CAL)) {
+      userPms.CAL = G.ce.cal;
+      ceLive.cal = G.ce.cal;
+      var ci = $('calInput');
+      if (ci && document.activeElement !== ci) ci.value = G.ce.cal;
+      fixed.push('CAL ' + G.ce.cal);
+    }
+    return fixed;
   }
 
   function bindDimInputs() {
@@ -994,13 +1097,20 @@
         /* 只读尺寸要先按上游回来的新 ce 更新，再算、再画 —— 否则方盒改了长，
            宽的输入框还停在旧值上，看着就像「改了没反应」。 */
         syncLockedDims();
+        /* 再把上游的实际生效值写回参数输入框：越界值是被上游钳制过的
+           （如 长1 传 200 实际按 96 算），不写回去界面上就是假的。 */
+        var pmsFixed = syncPmsFromCe();
         syncDimLock();
         SP = spansFrom(G.rm);
         compute();
         renderDims();
         renderCanvas();
         renderInfo();
-        setStatus('ok', '已按新尺寸求解（展开 ' + V2.num((G.b[2] - G.b[0])) + ' × ' + V2.num((G.b[3] - G.b[1])) + ' mm）');
+        setStatus('ok', '已按新尺寸求解（展开 ' + V2.num((G.b[2] - G.b[0])) + ' × ' + V2.num((G.b[3] - G.b[1])) + ' mm）'
+          + (pmsFixed.length
+            ? ' · ' + pmsFixed.length + ' 项已按盒型规则校正（' + pmsFixed.slice(0, 3).join('、')
+              + (pmsFixed.length > 3 ? ' 等' : '') + '）'
+            : ''));
         /* 尺寸一变，手上的 3D 折叠树就作废。3D 开着就立刻按新尺寸重做，
            没开就留下过期标记，等下次进 3D 时再取（不白打接口）。 */
         v3dStale = true;
