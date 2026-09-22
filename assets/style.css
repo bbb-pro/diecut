@@ -1044,7 +1044,9 @@ details.adv .field-group { margin-top: 12px; }
   color: var(--muted);
 }
 
-/* 3D 模式下收起 2D 专属的图例、置灰无效按钮（免得点了没反应） */
-.canvas-panel.is-3d .legend { display: none; }
+/* 3D 模式下整条 2D 工具条（缩放 / 适应 / 主尺寸 / 其他参数 / 文字口径 / 展开尺寸）
+   和 2D 图例都属于「展开图」，一律收起 —— 3D 有自己的 HUD（纸种 / 网格 / 复位视角）。
+   （JS 侧仍会 disabled，双保险：万一这条被覆盖也不会误点） */
+.canvas-panel.is-3d .canvas-tools { display: none; }
 .btn:disabled { opacity: .4; cursor: default; }
 .btn:disabled:hover { background: var(--surface); border-color: var(--border-strong); }
