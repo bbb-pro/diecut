@@ -953,14 +953,24 @@
     if (dims.D != null) map.D = dims.D;
     map.CAL = ceLive.cal;
 
-    /* ②.5 防尘翼长 A（op 含 A 的盒型，如 J028）是「宽度派生默认值」：
-       实测不传 A 时上游按 a=w 重推（W=100 → 回读 a=100），官方站改宽即跟随
-       用的就是这个机制。op 基底里带着首屏 A 会把它钉死在旧值 —— 所以用户
-       没改过 A 时把它剔掉，宽变了翼跟着变；用户改过则留给 ③ 无条件回传（钉住）。
-       回填由 syncPmsFromCe 负责：输入框刷新为新 a、且不固化进 userPms。 */
-    if (!Object.prototype.hasOwnProperty.call(userPms, 'A')) {
-      var ai = order.indexOf('A');
-      if (ai >= 0) { order.splice(ai, 1); delete map.A; }
+    /* ②.5 「尺寸派生默认值」参数跟随：这批参数（防尘翼 A、插片 F4/F6/F7、
+       高位变体 D3/D4/D6、宽位 W7、锁位 K1/K2/K4/K7 等，全站 24 键）不传时上游
+       会按当前尺寸重推默认值（如 J028 的 a=w），官方站「改宽即跟随」就是这个
+       机制。op 基底带着首屏值会把它们钉死 —— 所以用户没改过（不在 userPms）
+       就剔掉；改过则留给 ③ 无条件回传（钉住）。syncPmsFromCe 负责把新值刷回
+       输入框且不固化。
+       白名单来源：全站 171 个 op 键逐一对照实验（带 K 与不带 K 各解一次），
+       排除「剔除后 ce 缺键」的必填参数（D5/X4/G1/SD/D0/DL/STY08 等）和
+       结构选项（STY*）后，每个键再抽 3 盒型验证剔除可解 —— 2026-09-29。 */
+    var FOLLOW_DIM_KEYS = { A: 1, B: 1, B3: 1, CAL1: 1, D3: 1, D4: 1, D6: 1,
+      F4: 1, F6: 1, F7: 1, G5: 1, K1: 1, K2: 1, K4: 1, K7: 1, L2: 1,
+      TD2: 1, W7: 1, X1: 1, X5: 1, X8: 1, Y: 1, Y10: 1, A4: 1 };
+    for (var fi = order.length - 1; fi >= 0; fi--) {
+      var fk = order[fi];
+      if (FOLLOW_DIM_KEYS[fk] && !Object.prototype.hasOwnProperty.call(userPms, fk)) {
+        order.splice(fi, 1);
+        delete map[fk];
+      }
     }
 
     /* ③ 用户显式改过的参数：**无条件回传**。
