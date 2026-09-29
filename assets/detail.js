@@ -953,6 +953,16 @@
     if (dims.D != null) map.D = dims.D;
     map.CAL = ceLive.cal;
 
+    /* ②.5 防尘翼长 A（op 含 A 的盒型，如 J028）是「宽度派生默认值」：
+       实测不传 A 时上游按 a=w 重推（W=100 → 回读 a=100），官方站改宽即跟随
+       用的就是这个机制。op 基底里带着首屏 A 会把它钉死在旧值 —— 所以用户
+       没改过 A 时把它剔掉，宽变了翼跟着变；用户改过则留给 ③ 无条件回传（钉住）。
+       回填由 syncPmsFromCe 负责：输入框刷新为新 a、且不固化进 userPms。 */
+    if (!Object.prototype.hasOwnProperty.call(userPms, 'A')) {
+      var ai = order.indexOf('A');
+      if (ai >= 0) { order.splice(ai, 1); delete map.A; }
+    }
+
     /* ③ 用户显式改过的参数：**无条件回传**。
        上游求解是无状态的 —— 每次只认本次传过去的参数，所以用户改过的值
        必须每次带上，否则第二次改动会把第一次的改动顶掉（实测：改 d2 再改 of，
