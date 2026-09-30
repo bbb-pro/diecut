@@ -601,9 +601,14 @@ export function create(host, onInfo, onPaper) {
       const nx = (p.v[k * 2] - bbox2.x0) / bw;
       const ny = (p.v[k * 2 + 1] - bbox2.y0) / bh;
       const uv = xfUV(nx, ny, bw, bh, fw, fh);
+      /* 世界嵌入是【恒等映射】(x,y,z)->(x,y,z)，行列式 +1，纯旋转、手性守恒 → u 不用翻。
+         v 也不用翻：p.v 里的 y 在 fromOfficial 就已取反（`r2(-vs[z+1])`），
+         所以数据 y 越大= 越靠上，ny=1 就是 2D 上方；
+         而three 纹理 flipY=true 时 v=1 正对图像顶行 → v = ny 正好对上，一个字都不用翻。
+         （曾误加 u=1-u「抵消镜像」、v=1-v「翻V」，前者凭空造镜像、后者把图上下翻反，
+           已由 readPixels 像素比对实测纠正。）*/
       const u = uv[0];
-      /* 纹理 V 原点在下、展开图 y 向下 → 翻一下，图才不会上下颠倒 */
-      const v = 1 - uv[1];
+      const v = uv[1];
       out[k * 2] = u; out[k * 2 + 1] = v;
       if (E) { out[(N + k) * 2] = u; out[(N + k) * 2 + 1] = v; }
     }
@@ -893,8 +898,8 @@ export function create(host, onInfo, onPaper) {
     for (let i = 0; i < n; i++) {
       if (!cen[i]) continue;
       const m = M[i];
-      /* 法线 = 变换矩阵第三列（局部 z 轴），再按 three 映射 (x, z, -y) 摆正 */
-      let tx = m[8], ty = m[10], tz = -m[9];
+      /* 法线 = 变换矩阵第三列（局部 z 轴）—— 恒等映射下直接就是 three 法线 */
+      let tx = m[8], ty = m[9], tz = m[10];
       const L = Math.hypot(tx, ty, tz) || 1;
       tx /= L; ty /= L; tz /= L;
       const dx = cen[i][0] - cx, dy = cen[i][1] - cy, dz = cen[i][2] - cz;
@@ -909,7 +914,15 @@ export function create(host, onInfo, onPaper) {
     for (let i = 0; i < meshes.length; i++) meshes[i].geometry.computeVertexNormals();
   }
 
-  /* ---------- 每帧顶点（three 坐标 = (x, z, -y)：把抬升方向摆成世界的「上」） ---------- */
+  /* ---------- 每帧顶点 ----------
+   * three 世界坐标 = 折叠数学坐标【恒等映射】(x, y, z)。
+   *
+   * ❗这里曾经写成 (x, z, -y)，害得所有盒子「躺倒」：数学空间里 y 才是盒子的高度轴
+   *   （实测0014 管式盒 120x100x200，恒等映射竖直跨度 = 200 = 高度D，正好对上；
+   *   旧映射只有 100 = 宽度 W，200 那根管轴被甩到了屏幕深度方向）。
+   *   恒等映射行列式 = +1（纯旋转，手性守恒），所以贴图 UV 不需要任何翻转去"抵消镜像"，
+   *   此前 artUV 里那个 u = 1-uv[0] 纯属凭空制造左右镜像，已删。
+   */
 
   function applyProgress(tt, noRender) {
     t = Math.max(0, Math.min(1, tt));
@@ -924,20 +937,20 @@ export function create(host, onInfo, onPaper) {
       const off = co[p.c] || 0;
       const N = mesh.userData.N;
       const on = mesh.userData.on;
-      /* 面板法线：变换矩阵第三列（局部 z 轴）→ three 映射 (x, z, -y)。
+      /* 面板法线：变换矩阵第三列（局部 z 轴）—— 恒等映射下它就是 three 世界法线。
          折叠是刚体变换，所以法线跟着面板一起转，加厚方向永远垂直于板面。 */
       let nx = 0, ny = 0, nz = 0;
       if (on) {
-        nx = M[i][8]; ny = M[i][10]; nz = -M[i][9];
+        nx = M[i][8]; ny = M[i][9]; nz = M[i][10];
         const L = Math.hypot(nx, ny, nz) || 1;
         nx = nx / L * up; ny = ny / L * up; nz = nz / L * up;
       }
-      const mx = on ? -M[i][8] : 0, my = on ? -M[i][10] : 0, mz = on ? M[i][9] : 0;
+      const mx = on ? -M[i][8] : 0, my = on ? -M[i][9] : 0, mz = on ? -M[i][10] : 0;
       const ML = Math.hypot(mx, my, mz) || 1;
       const ix = mx / ML * dn, iy = my / ML * dn, iz = mz / ML * dn;
       for (let k = 0, j = 0; k < p.v.length; k += 2, j += 3) {
         const q = xform(M[i], [p.v[k], p.v[k + 1], 0]);
-        const bx = q[0] + off, by = q[2], bz = -q[1];
+        const bx = q[0] + off, by = q[1], bz = q[2];
         arr[j] = bx + nx; arr[j + 1] = by + ny; arr[j + 2] = bz + nz;   // 外皮
         if (on) {
           arr[N * 3 + j] = bx + ix;                                     // 内皮（反方向）
@@ -983,8 +996,11 @@ export function create(host, onInfo, onPaper) {
     const size = box.getSize(new THREE.Vector3());
     const ctr = box.getCenter(new THREE.Vector3());
     const mx = Math.max(size.x, size.y, size.z) || 100;
+    /* 机位在 +z 侧（恒等映射下展开图平铺在 z=0 平面，朝+z 就是正面）：
+       从前上方俯视，展开态正立、折好后从正面看到盒子的印刷面。
+       镜像/颠倒一律由坐标映射负责，机位只决定从哪看——改机位治不了方向错。 */
     home = {
-      pos: new THREE.Vector3(ctr.x + mx * 1.15, ctr.y + mx * 0.95, ctr.z + mx * 1.5),
+      pos: new THREE.Vector3(ctr.x + mx * 0.85, ctr.y + mx * 0.75, ctr.z + mx * 1.45),
       tgt: ctr.clone(),
       near: mx / 500, far: mx * 60
     };
@@ -1345,7 +1361,34 @@ export function create(host, onInfo, onPaper) {
         verts: meshes.map(function (m) { return m.geometry.attributes.position.count; }),
         thick: { cal: thick.cal, inner: thick.inner, outer: thick.outer, sign: thick.sign },
         art: !!artTex, artFit: artFit, artXf: artXf,
+        flipY: artTex ? artTex.flipY : null,
         bbox: bbox2, comps: (data && data.nc) || 0
+      };
+    },
+    /* 验收探针用：第 i 个面板的原始顶点/UV（贴图方向排查用） */
+    raw: function (i) {
+      const m = meshes[i || 0];
+      if (!m) return null;
+      const p = data.P[m.userData.i];
+      const r2v = function (n) { return Math.round(n * 100) / 100; };
+      return {
+        comp: p.c, N: m.userData.N,
+       展开v: Array.from(p.v).map(r2v),
+        pos: Array.from(m.geometry.attributes.position.array).map(r2v),
+        uv: Array.from(m.geometry.attributes.uv.array).map(function (n) { return Math.round(n * 1000) / 1000; })
+      };
+    },
+    /* 验收探针用：展开图绝对坐标 (mm) → 画布像素坐标（贴图方向零假设采样用）。
+       世界嵌入与 applyProgress 完全同款：(q0+off, q1, q2)。 */
+    project: function (x, y) {
+      if (!camera || !renderer || !data || !data.P.length) return null;
+      const off = (data.co && data.co[data.P[0].c]) || 0;
+      const q = xform(M[0], [x, y, 0]);
+      const v = new THREE.Vector3(q[0] + off, q[1], q[2]).project(camera);
+      return {
+        x: Math.round((v.x * 0.5 + 0.5) * renderer.domElement.width),
+        y: Math.round((1 - v.y * 0.5 - 0.5) * renderer.domElement.height),
+        ndc: [+v.x.toFixed(3), +v.y.toFixed(3)]
       };
     },
     /* 验收探针用：展开图上某点（归一化 0..1）对应到图稿的 UV。
@@ -1357,7 +1400,8 @@ export function create(host, onInfo, onPaper) {
       const fit = fitUv(ratio, bw, bh);
       const fw = bw * (fit.ux1 - fit.ux0) || 1, fh = bh * (fit.uy1 - fit.uy0) || 1;
       const uv = xfUV(nx, ny, bw, bh, fw, fh);
-      return { u: +uv[0].toFixed(4), v: +(1 - uv[1]).toFixed(4) };
+      /* 与 artUV 完全同一套公式（恒等映射：u、v 都不翻），两边永不脱钩 */
+      return { u: +uv[0].toFixed(4), v: +uv[1].toFixed(4) };
     },
     /* 验收探针用：量外皮↔内皮的实际距离（应等于 cal），null = 该面板没加厚 */
     measureThickness: function () {
@@ -1375,6 +1419,38 @@ export function create(host, onInfo, onPaper) {
           );
         }
         res.push(+(d / N).toFixed(3));
+      }
+      return res;
+    },
+    /* 验收探针用：折好后的真实 3D 包围盒（mm）。
+       判方向的关键量就是 sizeY —— 恒等映射下它应≈ 盒型高度 D。 */
+    measureWorldBBox: function () {
+      const b = new THREE.Box3();
+      let first = true;
+      for (let mi = 0; mi < meshes.length; mi++) {
+        const a = meshes[mi].geometry.attributes.position.array;
+        for (let j = 0; j < a.length; j += 3) {
+          const v = new THREE.Vector3(a[j], a[j + 1], a[j + 2]);
+          if (first) { b.set(v, v); first = false; } else b.expandByPoint(v);
+        }
+      }
+      if (first) return null;
+      const sz = b.getSize(new THREE.Vector3());
+      return {
+        min: [r2(b.min.x), r2(b.min.y), r2(b.min.z)],
+        max: [r2(b.max.x), r2(b.max.y), r2(b.max.z)],
+        size: [r2(sz.x), r2(sz.y), r2(sz.z)]
+      };
+    },
+    /* 验收探针用：每个面板中心的世界 Y + 展开图 y（找「上盖」该待在哪） */
+    panelWorldY: function () {
+      const res = [];
+      for (let mi = 0; mi < meshes.length; mi++) {
+        const mesh = meshes[mi], p = data.P[mesh.userData.i];
+        const N = mesh.userData.N, a = mesh.geometry.attributes.position.array;
+        let sy = 0, y2 = 0;
+        for (let k = 0; k < N; k++) { sy += a[k * 3 + 1]; y2 += p.v[k * 2 + 1]; }
+        res.push({ i: mesh.userData.i, worldY: r2(sy / N), flatY: r2(y2 / N) });
       }
       return res;
     },
