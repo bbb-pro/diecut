@@ -1049,3 +1049,44 @@ button, input, select { font-family: inherit; font-size: inherit; color: inherit
 .canvas-panel.is-3d .canvas-tools { display: none; }
 .btn:disabled { opacity: .4; cursor: default; }
 .btn:disabled:hover { background: var(--surface); border-color: var(--border-strong); }
+
+/* ============ 贴图与纸板厚度面板（夹在展开图与 3D 之间，两视图共用） ============ */
+
+.tex-panel { margin-top: 10px; }
+.tex-panel .panel-head { display: flex; align-items: center; gap: 8px; }
+.tex-state {
+  margin-left: auto; font-size: 11px; color: var(--muted);
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 999px; padding: 2px 9px; white-space: nowrap;
+}
+.tex-state.on { color: var(--accent-dark); background: var(--accent-weak); border-color: #cddcff; }
+
+.tex-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 9px; }
+.tex-pick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tex-pick .btn { height: 28px; }
+.tex-tip { font-size: 11px; color: var(--muted); }
+.tex-row {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  font-size: 12px; color: var(--text-2);
+}
+/* 纸板厚度不再在这里开关（搬到 3D 的「纸厚」按钮），这里只留只读数值 */
+.tex-thickinfo {
+  margin-left: auto; font-size: 11px; color: var(--muted); white-space: nowrap;
+}
+.tex-xf .tex-rg input[type="range"] { width: 96px; accent-color: var(--accent); cursor: pointer; }
+.tex-xf .tex-rg b { font-weight: 600; color: var(--text); min-width: 38px; }
+.tex-xf .btn.on {
+  color: var(--accent-dark); background: var(--accent-weak); border-color: #cddcff;
+}
+.tex-lb { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.tex-lb select {
+  font: inherit; font-size: 12px; color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 6px;
+  padding: 3px 5px; background: var(--surface); cursor: pointer;
+}
+.tex-lb input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; }
+.tex-op input[type="range"] { width: 92px; accent-color: var(--accent); cursor: pointer; }
+.tex-op b { font-weight: 600; color: var(--text); min-width: 32px; }
+
+/* 平面图上的贴图垫在刀模线底下：不抢线、不拦鼠标 */
+#canvasInner .art-layer { pointer-events: none; }

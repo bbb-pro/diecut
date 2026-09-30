@@ -289,6 +289,13 @@ const DWELL_MS = 2000;      // 首末帧停留
 
 function speedToMs(v) { return Math.round(SPEED_SLOW + (SPEED_FAST - SPEED_SLOW) * v / 100); }
 
+/* 「纸厚」开关（视觉加厚）跟网格一样是纯视图偏好，自己存自己读。
+   数值本身不存 —— 它来自盒型求解结果，换盒型就是另一个值。 */
+const THICK_KEY = 'V2.v3dThick';
+function readThickPref() {
+  try { return localStorage.getItem(THICK_KEY) === '1'; } catch (e) { return false; }
+}
+
 /* ---------- 纸材质（「纸种底色」）
 
    所谓「颜色设置」其实是**预置材质贴图**：
@@ -311,6 +318,74 @@ const PAPERS = [
   { k: 'red',   name: '红色纸', file: 'paper_red_A.jpg' },
 ];
 
+/* ---------- 厚度（视觉加厚）与图稿贴图的状态 ----------
+   加厚走「三明治」：外皮 +outer / 内皮 -inner（不对称，取自上游 ce.inner/outer），
+   沿面板轮廓补侧壁。折叠仍绕 z=0 中性层旋转，所以贴图 UV 完全不用改。 */
+const THICK_SIDE_COLOR = 0xc99b6a;   // 瓦楞断面色（官方 canvasCal 用的是这个）
+let thick = { cal: 0, inner: 0, outer: 0, sign: 1 };
+let artTex = null;        // 当前图稿纹理（CanvasTexture）
+let artFit = 'stretch';   // stretch=铺满展开包围盒 / contain=保持图片比例居中
+/* 图稿在展开图上的摆放：sx/sy 缩放倍数、rot 顺时针角度、dx/dy 位移（占包围盒宽/高的比例）。
+   变换一律在**展开图 mm 空间**里做（先位移→再旋转→再缩放），
+   2D 的 SVG transform 与 3D 的 UV 用同一套定义，两边才不会一个正一个反。 */
+let artXf = { sx: 1, sy: 1, rot: 0, dx: 0, dy: 0 };
+let bbox2 = null;         // 展开图包围盒 {x0,y0,x1,y1}（贴图归一化 UV 用）
+
+/** 图稿落位区间（归一化）：stretch=铺满整个包围盒，contain=按图片比例居中留白 */
+function fitUv(ratio, bw, bh) {
+  let ux0 = 0, uy0 = 0, ux1 = 1, uy1 = 1;
+  if (artFit === 'contain' && ratio > 0) {
+    const rb = bw / bh;
+    if (ratio > rb) {                            // 图更扁：上下留白
+      const h = rb / ratio;
+      uy0 = (1 - h) / 2; uy1 = uy0 + h;
+    } else {                                     // 图更瘦：左右留白
+      const w = ratio / rb;
+      ux0 = (1 - w) / 2; ux1 = ux0 + w;
+    }
+  }
+  return { ux0: ux0, uy0: uy0, ux1: ux1, uy1: uy1 };
+}
+
+/**
+ * 摆放的逆变换：展开图归一化坐标 (nx, ny) → 图稿自己的 0..1 坐标（y 向下，未翻 V）。
+ *
+ * 正向定义（2D 的 SVG transform 就照这句写，见 detail.js applyArt2d）：
+ *   图稿绕展开图中心顺时针转 rot → 按 sx/sy 缩放 → 平移 dx/dy（占包围盒宽/高的比例）
+ * 这里反过来算：减位移 → 除缩放 → 反旋转 → 折算回图稿自己的 0..1。
+ *
+ * 全程在 **mm 空间** 里算 —— 在归一化空间里转会被非等比缩放拉歪（contain 时尤其明显）。
+ * 3D 的 UV 与 2D 的 <image transform> 共用这一套定义，两边才不会一个正一个反。
+ */
+function xfUV(nx, ny, bw, bh, fw, fh) {
+  const cs = Math.cos(artXf.rot * Math.PI / 180), sn = Math.sin(artXf.rot * Math.PI / 180);
+  const qx = ((nx - 0.5) * bw - artXf.dx * bw) / (artXf.sx || 1);
+  const qy = ((ny - 0.5) * bh - artXf.dy * bh) / (artXf.sy || 1);
+  const mx = cs * qx + sn * qy;
+  const my = -sn * qx + cs * qy;
+  return [mx / fw + 0.5, my / fh + 0.5];
+}
+let artOf = [];           // 每面板两份 UV：[平铺 Float32Array, 归一化 Float32Array]
+
+/** 边界边：只属于一个三角形的边 = 面板轮廓，用来补侧壁 */
+function outlineEdges(p) {
+  const cnt = new Map();
+  for (let k = 0; k + 2 < p.f.length; k += 3) {
+    const t = [p.f[k], p.f[k + 1], p.f[k + 2]];
+    for (let e = 0; e < 3; e++) {
+      const a = t[e], b = t[(e + 1) % 3];
+      if (a === b) continue;
+      const key = a < b ? a + ',' + b : b + ',' + a;
+      const cur = cnt.get(key);
+      if (cur) cur.n++;
+      else cnt.set(key, { n: 1, a: a, b: b });
+    }
+  }
+  const out = [];
+  cnt.forEach(function (v) { if (v.n === 1) out.push([v.a, v.b]); });
+  return out;
+}
+
 /* ---------- 视图实例 ---------- */
 
 /**
@@ -327,6 +402,8 @@ export function create(host, onInfo, onPaper) {
       '<div class="v3d-viewbtns">' +
         '<button class="v3d-btn v3d-paper-t" type="button" aria-haspopup="true" aria-expanded="false"'
           + ' title="换纸张材质 / 盒体颜色">纸种 ⌄</button>' +
+        '<button class="v3d-btn v3d-thick" type="button" aria-pressed="false"'
+          + ' title="按纸板厚度把盒面挤成薄板（厚度取自盒型求解结果，开关注会被记住）">纸厚</button>' +
         '<button class="v3d-btn v3d-rot" type="button" title="让模型自己慢慢转圈，方便看背面">自动旋转</button>' +
         '<button class="v3d-btn v3d-home" type="button" title="回到刚进来时的视角（不改动自动折叠 / 自动旋转的开关）">复位视角</button>' +
         '<button class="v3d-btn v3d-gridb" type="button" aria-pressed="true"'
@@ -358,6 +435,7 @@ export function create(host, onInfo, onPaper) {
   const paperBtn = host.querySelector('.v3d-paper-t');
   const paperPop = host.querySelector('.v3d-paper');
   const gridBtn = host.querySelector('.v3d-gridb');
+  const thickBtn = host.querySelector('.v3d-thick');
 
   /* 网格开关（纯视图偏好，自己存自己读，不必上层转一手） */
   const GRID_KEY = 'V2.v3dGrid';
@@ -367,13 +445,15 @@ export function create(host, onInfo, onPaper) {
 
   let THREE = null, OrbitControls = null;
   let renderer = null, scene = null, camera = null, controls = null, grid = null;
-  let group = null, meshes = [], mats = [];
+  let group = null, meshes = [], mats = [], matsIn = [], matsSide = [];
   let data = null, M = [], t = 1, visible = false, raf = 0, lastTs = 0;
   /* playing: 0 停 / +1 往折好的方向走 / -1 往展开的方向走
      hold:    端点停留剩余毫秒（>0 时不动，数完掉头） */
   let playing = 0, hold = 0, legMs = speedToMs(SPEED_DEF);
   let wasPlaying = 0;               // 切去 2D 时正在播的那个方向，回来时接上
   let gridOn = readGridPref();      // 地面网格显隐（读数在 readGridPref 里做兜底）
+  let thickOn = readThickPref();    // 「纸厚」按钮：开=按 cal 挤成薄板，关=零厚度曲面
+  let thickSrc = { cal: 0, inner: 0, outer: 0 };   // 上游给的数值（上层每次重算后推过来）
   let home = null, info = null, bbox = null, mainComp = -1;
 
   /* ---------- 渲染器（首次需要时创建） ---------- */
@@ -471,7 +551,11 @@ export function create(host, onInfo, onPaper) {
     for (let i = 0; i < mats.length; i++) {
       const m = mats[i];
       const lvl = 1 - (i % 5) * 0.030;          // 0.88 ~ 1.00
-      if (tex) {
+      /* 有图稿时外面印图稿（UV 已切成归一化），纸纹让位 */
+      if (artTex) {
+        m.map = artTex;
+        m.color.setScalar(1);
+      } else if (tex) {
         m.map = tex;
         m.color.setScalar(lvl);                  // 压暗贴图，保留面的层次
       } else {
@@ -485,21 +569,164 @@ export function create(host, onInfo, onPaper) {
         }
       }
       m.needsUpdate = true;
+      /* 内皮：不印图稿（盒内通常是空白或另一张图），保持纸色/纸纹，压暗一点点 */
+      const mi = matsIn[i];
+      if (mi) {
+        mi.map = artTex ? null : tex;
+        if (artTex || !tex) {
+          mi.color.setHSL(0.09 + (i % 7) * 0.010, 0.24, 0.52 - (i % 5) * 0.024);
+        } else {
+          mi.color.setScalar(lvl * 0.82);
+        }
+        mi.needsUpdate = true;
+      }
     }
     if (renderer) render();
   }
+
+  /* ---------- 图稿贴图：整张展开图 = 一张印刷面 ---------- */
+
+  /** 归一化 UV：把展开坐标映到 0..1（fit=contain 时按图片比例居中留白） */
+  function artUV(p, ratio, edgeCount) {
+    const N = p.v.length / 2, E = edgeCount || 0;
+    /* 顶点序：外皮 N → 内皮 N → 侧壁 4E；零厚度（E=0）时只有外皮 */
+    const VN = E ? (N * 2 + E * 4) : N;
+    const out = new Float32Array(VN * 2);
+    const bw = (bbox2.x1 - bbox2.x0) || 1, bh = (bbox2.y1 - bbox2.y0) || 1;
+    const fit = fitUv(ratio, bw, bh);
+    /* 图稿在展开图上占据的矩形（mm）：stretch=整个包围盒，contain=按图片比例居中后的那块 */
+    const fw = bw * (fit.ux1 - fit.ux0) || 1, fh = bh * (fit.uy1 - fit.uy0) || 1;
+
+    for (let k = 0; k < N; k++) {
+      const nx = (p.v[k * 2] - bbox2.x0) / bw;
+      const ny = (p.v[k * 2 + 1] - bbox2.y0) / bh;
+      const uv = xfUV(nx, ny, bw, bh, fw, fh);
+      const u = uv[0];
+      /* 纹理 V 原点在下、展开图 y 向下 → 翻一下，图才不会上下颠倒 */
+      const v = 1 - uv[1];
+      out[k * 2] = u; out[k * 2 + 1] = v;
+      if (E) { out[(N + k) * 2] = u; out[(N + k) * 2 + 1] = v; }
+    }
+    return out;
+  }
+
+  /** 换贴图/换贴合方式：重算归一化 UV 并整体切换（外皮↔内皮共用同一套 UV 属性） */
+  function applyArt() {
+    if (!meshes.length) return;
+    const P = data.P;
+    const ratio = artTex && artTex.image ? (artTex.image.width / artTex.image.height) : 0;
+    for (let mi = 0; mi < meshes.length; mi++) {
+      const mesh = meshes[mi], i = mesh.userData.i, p = P[i];
+      const src = artTex ? artUV(p, ratio, mesh.userData.edges.length) : mesh.userData.uvT;
+      mesh.geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(src), 2));
+    }
+    applyPaper();
+  }
+
+  /**
+   * 用户上传的图：@param src 已解码的 image/canvas；@param fit stretch|contain
+   * @param xf 可选摆放参数 {sx,sy,rot,dx,dy}（传进来就整体替换）
+   */
+  function setArt(src, fit, xf) {
+    if (fit) artFit = fit;
+    if (xf) artXf = { sx: +xf.sx || 1, sy: +xf.sy || 1, rot: +xf.rot || 0, dx: +xf.dx || 0, dy: +xf.dy || 0 };
+    if (!src) { clearArt(); return true; }
+    if (!THREE) return false;
+    if (artTex) artTex.dispose();
+    artTex = new THREE.CanvasTexture(src);       // canvas/image 都收，走 GPU 直传
+    artTex.wrapS = artTex.wrapT = THREE.ClampToEdgeWrapping;
+    artTex.anisotropy = 8;
+    if (THREE.SRGBColorSpace) artTex.colorSpace = THREE.SRGBColorSpace;
+    applyArt();
+    return true;
+  }
+
+  function clearArt() {
+    if (artTex) { artTex.dispose(); artTex = null; }
+    applyArt();
+  }
+
+  /** 只改摆放（缩放 / 旋转 / 位移）：重算 UV 就行，纹理不用重建 */
+  function setArtXf(xf) {
+    if (!xf) return artXf;
+    if (xf.sx != null) artXf.sx = +xf.sx || 1;
+    if (xf.sy != null) artXf.sy = +xf.sy || 1;
+    if (xf.rot != null) artXf.rot = +xf.rot || 0;
+    if (xf.dx != null) artXf.dx = +xf.dx || 0;
+    if (xf.dy != null) artXf.dy = +xf.dy || 0;
+    if (artTex) applyArt();
+    return artXf;
+  }
+
+  /** 厚度：上游 ce 的 cal/inner/outer（mm）。cal=0 退回零厚度曲面 */
+  function setThickness(cal, inner, outer) {
+    const c = Math.max(0, Number(cal) || 0);
+    thick.cal = c;
+    thick.inner = Math.max(0, Number(inner) || 0);
+    thick.outer = Math.max(0, Number(outer) || 0);
+    if (c > 0 && !thick.inner && !thick.outer) { thick.inner = c / 2; thick.outer = c / 2; }
+    if (c > 0 && thick.inner + thick.outer < c * 0.9) {   // 数据不全时按 2:1 兜底
+      thick.inner = c * 2 / 3; thick.outer = c / 3;
+    }
+    if (data && meshes.length) {
+      /* 只有「有没有厚度」这种结构变化才需要重建几何；只改数值时重写顶点就够 */
+      const wasOn = meshes.length && meshes[0].userData.on;
+      if (wasOn !== (c > 0.0001)) build();
+      else { applyProgress(t, true); geoNormalsOnce(); }
+      if (visible) render();
+    }
+    return { cal: thick.cal, inner: thick.inner, outer: thick.outer };
+  }
+
+  /* ---------- 「纸厚」按钮（HUD 里，纸种旁边） ---------- */
+
+  function mm(v) { return (Math.round((+v || 0) * 100) / 100).toString(); }
+
+  /** 按钮态与实际加厚都由这里统一刷（点按钮 / 上层推新数值都走它） */
+  function syncThick() {
+    const has = thickSrc.cal > 0.0001;
+    const on = thickOn && has;
+    thickBtn.classList.toggle('on', on);
+    thickBtn.setAttribute('aria-pressed', String(on));
+    thickBtn.disabled = !has;
+    thickBtn.title = has
+      ? (on ? '关掉' : '显示') + '纸板厚度（' + mm(thickSrc.cal) + 'mm，内 ' + mm(thickSrc.inner)
+        + ' / 外 ' + mm(thickSrc.outer) + '；开关会被记住）'
+      : '该盒型没有厚度数据';
+  }
+
+  /** 上层把上游算出来的厚度推过来（每次重算后都推一次）；开关由 3D 的「纸厚」按钮管 */
+  function setThickData(cal, inner, outer) {
+    thickSrc = { cal: +cal || 0, inner: +inner || 0, outer: +outer || 0 };
+    if (thickOn && thickSrc.cal > 0.0001) setThickness(thickSrc.cal, thickSrc.inner, thickSrc.outer);
+    else setThickness(0, 0, 0);
+    syncThick();
+    return { on: thickOn, cal: thickSrc.cal, inner: thickSrc.inner, outer: thickSrc.outer };
+  }
+
+  /** 开 / 关（不传参取反）；选择写进本地记忆，下次进 3D 沿用 */
+  function setThick(on) {
+    thickOn = (on == null) ? !thickOn : !!on;
+    try { localStorage.setItem(THICK_KEY, thickOn ? '1' : '0'); } catch (e) { /* 隐私模式忽略 */ }
+    if (thickOn && thickSrc.cal > 0.0001) setThickness(thickSrc.cal, thickSrc.inner, thickSrc.outer);
+    else setThickness(0, 0, 0);
+    syncThick();
+    return thickOn;
+  }
+
+  thickBtn.addEventListener('click', function () { api.setThick(); });
 
   /* ---------- 载入 / 重建 ---------- */
 
   function clearMeshes() {
     if (!group) return;
-    for (let i = 0; i < meshes.length; i++) {
-      meshes[i].geometry.dispose();
-      mats[i].dispose();
-    }
+    for (let i = 0; i < meshes.length; i++) meshes[i].geometry.dispose();
+    for (let i = 0; i < mats.length; i++) mats[i].dispose();
+    for (let i = 0; i < matsIn.length; i++) matsIn[i].dispose();
+    for (let i = 0; i < matsSide.length; i++) matsSide[i].dispose();
     scene.remove(group);
     if (THREE) group = new THREE.Group();
-    meshes = []; mats = [];
+    meshes = []; mats = []; matsIn = []; matsSide = [];
   }
 
   function build() {
@@ -527,19 +754,58 @@ export function create(host, onInfo, onPaper) {
     mainComp = 0;
     for (let c = 0; c < area.length; c++) if (area[c] > area[mainComp]) mainComp = c;
 
+    /* 展开图包围盒：图稿贴图的 UV 按它归一化（整张展开图 = 一张印刷面） */
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const v = P[i].v;
+      for (let k = 0; k < v.length; k += 2) {
+        if (v[k] < x0) x0 = v[k];
+        if (v[k] > x1) x1 = v[k];
+        if (v[k + 1] < y0) y0 = v[k + 1];
+        if (v[k + 1] > y1) y1 = v[k + 1];
+      }
+    }
+    if (!isFinite(x0)) { x0 = 0; y0 = 0; x1 = 1; y1 = 1; }
+    bbox2 = { x0: x0, y0: y0, x1: x1, y1: y1 };
+    artOf = [];
+
+    const on = thick.cal > 0.0001;
+
     for (let i = 0; i < n; i++) {
       const p = P[i];
       if (!p.v.length || !p.f.length) continue;
+      const N = p.v.length / 2;
+      const edges = on ? outlineEdges(p) : [];
+      const E = edges.length;
+      const VN = on ? (N * 2 + E * 4) : N;      // 加厚：外皮 N + 内皮 N + 侧壁 4E
+
+      /* UV 两套：
+         ① 平铺（纸纹）：展开坐标 ÷ TEX_MM —— 折叠是刚体变换，UV 恒定，
+            纹理等于「印在同一张纸上」，折痕处不会撕开错位。
+         ② 归一化（图稿）：(展开坐标 − 包围盒原点) ÷ 包围盒尺寸 —— 整张展开图一张图。
+         两套随贴图开关切换，顶点不动。 */
+      const uvT = new Float32Array(VN * 2);
+      const uvN = new Float32Array(VN * 2);
+      const bw = (x1 - x0) || 1, bh = (y1 - y0) || 1;
+      for (let k = 0; k < N; k++) {
+        const tx = p.v[k * 2] / TEX_MM, ty = p.v[k * 2 + 1] / TEX_MM;
+        const nx = (p.v[k * 2] - x0) / bw, ny = (p.v[k * 2 + 1] - y0) / bh;
+        // 外皮 [0,N) 与内皮 [N,2N) 共用同一套 UV（零厚度时没有内皮）
+        uvT[k * 2] = tx; uvT[k * 2 + 1] = ty;
+        uvN[k * 2] = nx; uvN[k * 2 + 1] = ny;
+        if (on) {
+          uvT[(N + k) * 2] = tx; uvT[(N + k) * 2 + 1] = ty;
+          uvN[(N + k) * 2] = nx; uvN[(N + k) * 2 + 1] = ny;
+        }
+      }
+
       const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(p.v.length / 2 * 3), 3));
-      /* UV 直接取展开图 2D 坐标 ÷ TEX_MM：
-         折叠是刚体变换，同一顶点的 UV 恒定不变 → 贴图等于「印在同一张纸上」，
-         折起来纹理跟着面板走，折痕两侧不会错位撕裂。 */
-      const uv = new Float32Array(p.v.length);
-      for (let k = 0; k < p.v.length; k++) uv[k] = p.v[k] / TEX_MM;
-      geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-      geo.setIndex(p.f.slice());
-      const mat = new THREE.MeshStandardMaterial({
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(VN * 3), 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvT), 2));
+
+      const idx = new Uint32Array(on ? (p.f.length * 2 + E * 6) : p.f.length);
+      idx.set(p.f, 0);
+      const matOut = new THREE.MeshStandardMaterial({
         /* 纸板色：暖调，面板之间轻微错开明度，折起来才看得清都是哪些面 */
         color: new THREE.Color().setHSL(0.09 + (i % 7) * 0.010, 0.30, 0.66 - (i % 5) * 0.030),
         side: THREE.DoubleSide,
@@ -547,17 +813,96 @@ export function create(host, onInfo, onPaper) {
         metalness: 0.02,
         flatShading: true
       });
-      const mesh = new THREE.Mesh(geo, mat);
+      let matIn = null, matSide = null;
+      const matList = [matOut];
+
+      if (on) {
+        /* 内皮：绕向翻转（外皮朝外时内皮朝内），颜色压暗一点，折起来里外分得清 */
+        for (let k = 0; k < p.f.length; k += 3) {
+          idx[p.f.length + k] = p.f[k + 1] + N;
+          idx[p.f.length + k + 1] = p.f[k] + N;
+          idx[p.f.length + k + 2] = p.f[k + 2] + N;
+        }
+        /* 侧壁：每条轮廓边 4 个顶点（外A 外B 内B 内A）→ 2 个三角形。
+           DoubleSide 兜底，不必纠结绕向。 */
+        for (let e = 0; e < E; e++) {
+          const b = N * 2 + e * 4, o = p.f.length * 2 + e * 6;
+          idx[o] = b; idx[o + 1] = b + 1; idx[o + 2] = b + 2;
+          idx[o + 3] = b; idx[o + 4] = b + 2; idx[o + 5] = b + 3;
+        }
+        matIn = new THREE.MeshStandardMaterial({
+          color: new THREE.Color().setHSL(0.09 + (i % 7) * 0.010, 0.24, 0.52 - (i % 5) * 0.024),
+          side: THREE.DoubleSide, roughness: 0.9, metalness: 0.02, flatShading: true
+        });
+        matSide = new THREE.MeshStandardMaterial({
+          color: THICK_SIDE_COLOR, side: THREE.DoubleSide, roughness: 0.95, metalness: 0.0, flatShading: true
+        });
+        matList.push(matIn, matSide);
+        geo.addGroup(0, p.f.length, 0);                 // 外皮
+        geo.addGroup(p.f.length, p.f.length, 1);        // 内皮
+        geo.addGroup(p.f.length * 2, E * 6, 2);         // 侧壁
+      }
+      geo.setIndex(new THREE.BufferAttribute(idx, 1));
+
+      /* ❗ 零厚度时必须传「单个材质」而不是 [matOut]：
+         three 遇到材质数组只按 geometry.groups 渲染，而零厚度几何没有 group，
+         结果就是整个网格一个三角形都不画（表现为关掉「纸厚」后模型凭空消失）。 */
+      const mesh = new THREE.Mesh(geo, on ? matList : matOut);
       mesh.userData.i = i;
+      mesh.userData.edges = edges;
+      mesh.userData.N = N;
+      mesh.userData.on = on;
+      mesh.userData.uvT = uvT;                    // 平铺 UV（纸纹）
+      mesh.userData.uvN = uvN;                    // 归一化 UV（图稿，contain 时会重算）
       mesh.frustumCulled = false;   // 顶点每帧都在动，交给引擎算包围球不如直接不过滤
       group.add(mesh);
-      meshes.push(mesh); mats.push(mat);
+      meshes.push(mesh); mats.push(matOut);
+      if (matIn) { matsIn.push(matIn); matsSide.push(matSide); }
     }
 
     applyProgress(1, true);         // 先把顶点写进去（否则包围盒退化成一个点）
+    thick.sign = faceSign();        // 折好之后才知道哪面朝外（整张纸统一判定）
+    applyProgress(1, true);
     fitCamera();
     geoNormalsOnce();
     applyPaper();                   // 重建后把当前纸种贴回去
+    applyArt();                     // 重建后把图稿贴回去
+  }
+
+  /** 哪一面朝外：折好之后按「面积加权」看法线是不是背离盒心 —— 整张纸只判一次，
+      不能逐面板翻（一张纸的两面是连续的，逐面翻会让贴图在折痕处镜像错位）。 */
+  function faceSign() {
+    const P = data.P, n = P.length;
+    if (!n || !meshes.length) return 1;
+    const cen = [];
+    let cx = 0, cy = 0, cz = 0, w = 0;
+    for (let mi = 0; mi < meshes.length; mi++) {
+      const mesh = meshes[mi], i = mesh.userData.i, p = P[i];
+      if (p.c !== mainComp) continue;
+      const N = mesh.userData.N;
+      const arr = mesh.geometry.attributes.position.array;
+      let sx = 0, sy = 0, sz = 0;
+      for (let j = 0; j < N * 3; j += 3) { sx += arr[j]; sy += arr[j + 1]; sz += arr[j + 2]; }
+      if (!N) continue;
+      cen[i] = [sx / N, sy / N, sz / N];
+      cx += cen[i][0]; cy += cen[i][1]; cz += cen[i][2]; w++;
+    }
+    if (!w) return 1;
+    cx /= w; cy /= w; cz /= w;
+    let dot = 0, wsum = 0;
+    for (let i = 0; i < n; i++) {
+      if (!cen[i]) continue;
+      const m = M[i];
+      /* 法线 = 变换矩阵第三列（局部 z 轴），再按 three 映射 (x, z, -y) 摆正 */
+      let tx = m[8], ty = m[10], tz = -m[9];
+      const L = Math.hypot(tx, ty, tz) || 1;
+      tx /= L; ty /= L; tz /= L;
+      const dx = cen[i][0] - cx, dy = cen[i][1] - cy, dz = cen[i][2] - cz;
+      const a = Math.hypot(dx, dy, dz) || 1;
+      dot += (tx * dx + ty * dy + tz * dz) / a * (1 + a);
+      wsum += (1 + a);
+    }
+    return dot >= 0 ? 1 : -1;
   }
 
   function geoNormalsOnce() {
@@ -571,15 +916,46 @@ export function create(host, onInfo, onPaper) {
     if (!data) return;
     const P = data.P, co = data.co || [];
     buildM(P, t, data.s, M);
+    const sgn = thick.sign;
+    const up = thick.outer * sgn, dn = thick.inner * sgn;   // 外皮 / 内皮 沿法线的偏移
     for (let mi = 0; mi < meshes.length; mi++) {
       const mesh = meshes[mi], i = mesh.userData.i, p = P[i];
       const arr = mesh.geometry.attributes.position.array;
       const off = co[p.c] || 0;
+      const N = mesh.userData.N;
+      const on = mesh.userData.on;
+      /* 面板法线：变换矩阵第三列（局部 z 轴）→ three 映射 (x, z, -y)。
+         折叠是刚体变换，所以法线跟着面板一起转，加厚方向永远垂直于板面。 */
+      let nx = 0, ny = 0, nz = 0;
+      if (on) {
+        nx = M[i][8]; ny = M[i][10]; nz = -M[i][9];
+        const L = Math.hypot(nx, ny, nz) || 1;
+        nx = nx / L * up; ny = ny / L * up; nz = nz / L * up;
+      }
+      const mx = on ? -M[i][8] : 0, my = on ? -M[i][10] : 0, mz = on ? M[i][9] : 0;
+      const ML = Math.hypot(mx, my, mz) || 1;
+      const ix = mx / ML * dn, iy = my / ML * dn, iz = mz / ML * dn;
       for (let k = 0, j = 0; k < p.v.length; k += 2, j += 3) {
         const q = xform(M[i], [p.v[k], p.v[k + 1], 0]);
-        arr[j] = q[0] + off;
-        arr[j + 1] = q[2];
-        arr[j + 2] = -q[1];
+        const bx = q[0] + off, by = q[2], bz = -q[1];
+        arr[j] = bx + nx; arr[j + 1] = by + ny; arr[j + 2] = bz + nz;   // 外皮
+        if (on) {
+          arr[N * 3 + j] = bx + ix;                                     // 内皮（反方向）
+          arr[N * 3 + j + 1] = by + iy;
+          arr[N * 3 + j + 2] = bz + iz;
+        }
+      }
+      if (on) {
+        /* 侧壁：外A / 外B / 内B / 内A —— 直接复用刚写好的外皮、内皮顶点 */
+        const edges = mesh.userData.edges;
+        for (let e = 0; e < edges.length; e++) {
+          const a = edges[e][0] * 3, b = edges[e][1] * 3;
+          const o = (N * 2 + e * 4) * 3;
+          arr[o] = arr[a]; arr[o + 1] = arr[a + 1]; arr[o + 2] = arr[a + 2];
+          arr[o + 3] = arr[b]; arr[o + 4] = arr[b + 1]; arr[o + 5] = arr[b + 2];
+          arr[o + 6] = arr[N * 3 + b]; arr[o + 7] = arr[N * 3 + b + 1]; arr[o + 8] = arr[N * 3 + b + 2];
+          arr[o + 9] = arr[N * 3 + a]; arr[o + 10] = arr[N * 3 + a + 1]; arr[o + 11] = arr[N * 3 + a + 2];
+        }
       }
       mesh.geometry.attributes.position.needsUpdate = true;
     }
@@ -821,6 +1197,28 @@ export function create(host, onInfo, onPaper) {
       return PAPERS.map(function (p) { return { k: p.k, name: p.name, file: p.file || null }; });
     },
 
+    /* 视觉加厚：按上游 ce 的 cal/inner/outer（mm）把零厚度曲面挤成薄板。
+       cal 传 0 就退回原来的曲面（不加厚）。 */
+    setThickness: setThickness,
+    thickness: function () { return { cal: thick.cal, inner: thick.inner, outer: thick.outer }; },
+
+    /* 「纸厚」按钮走的入口：
+       setThickData() 由上层推上游数值（换盒型 / 改了纸厚参数都会重推），
+       setThick() 是按钮本身的开 / 关，开关状态记在本地，下次进 3D 沿用。 */
+    setThickData: setThickData,
+    setThick: setThick,
+    thick: function () {
+      return { on: thickOn, cal: thick.cal, inner: thick.inner, outer: thick.outer, src: thickSrc.cal };
+    },
+
+    /* 图稿贴图：src 是 image/canvas（整张展开图当印刷面），fit = stretch|contain；
+       setArtXf() 只改摆放（缩放 / 旋转 / 位移），clearArt() 撤掉贴图退回纸纹/纸色。 */
+    setArt: setArt,
+    setArtXf: setArtXf,
+    artXf: function () { return { sx: artXf.sx, sy: artXf.sy, rot: artXf.rot, dx: artXf.dx, dy: artXf.dy }; },
+    clearArt: clearArt,
+    hasArt: function () { return !!artTex; },
+
     /** 地面网格显隐（不传参则取反）；选择写进本地记忆，下次进 3D 沿用 */
     setGrid: function (v) {
       gridOn = (v == null) ? !gridOn : !!v;
@@ -940,6 +1338,46 @@ export function create(host, onInfo, onPaper) {
     cam: function () {
       return camera ? [r2(camera.position.x), r2(camera.position.y), r2(camera.position.z)] : null;
     },
+    /* 验收探针用：几何/厚度/贴图现状（加厚后顶点数应从 N 变成 2N+4E） */
+    debug: function () {
+      return {
+        meshes: meshes.length,
+        verts: meshes.map(function (m) { return m.geometry.attributes.position.count; }),
+        thick: { cal: thick.cal, inner: thick.inner, outer: thick.outer, sign: thick.sign },
+        art: !!artTex, artFit: artFit, artXf: artXf,
+        bbox: bbox2, comps: (data && data.nc) || 0
+      };
+    },
+    /* 验收探针用：展开图上某点（归一化 0..1）对应到图稿的 UV。
+       拿它跟 2D 那张 <image> 的 transform 反算结果对比，就能证明两边摆放一致。 */
+    uvAt: function (nx, ny) {
+      if (!bbox2 || !artTex) return null;
+      const bw = (bbox2.x1 - bbox2.x0) || 1, bh = (bbox2.y1 - bbox2.y0) || 1;
+      const ratio = artTex.image ? artTex.image.width / artTex.image.height : 0;
+      const fit = fitUv(ratio, bw, bh);
+      const fw = bw * (fit.ux1 - fit.ux0) || 1, fh = bh * (fit.uy1 - fit.uy0) || 1;
+      const uv = xfUV(nx, ny, bw, bh, fw, fh);
+      return { u: +uv[0].toFixed(4), v: +(1 - uv[1]).toFixed(4) };
+    },
+    /* 验收探针用：量外皮↔内皮的实际距离（应等于 cal），null = 该面板没加厚 */
+    measureThickness: function () {
+      const res = [];
+      for (let mi = 0; mi < Math.min(4, meshes.length); mi++) {
+        const mesh = meshes[mi];
+        if (!mesh.userData.on) { res.push(null); continue; }
+        const N = mesh.userData.N, a = mesh.geometry.attributes.position.array;
+        let d = 0;
+        for (let k = 0; k < N; k++) {
+          d += Math.hypot(
+            a[N * 3 + k * 3] - a[k * 3],
+            a[N * 3 + k * 3 + 1] - a[k * 3 + 1],
+            a[N * 3 + k * 3 + 2] - a[k * 3 + 2]
+          );
+        }
+        res.push(+(d / N).toFixed(3));
+      }
+      return res;
+    },
     state: function () {
       return {
         t: r2(t), playing: playing, hold: Math.round(hold),
@@ -963,6 +1401,8 @@ export function create(host, onInfo, onPaper) {
       renderer = null; scene = null; camera = null; controls = null; group = null; data = null;
     }
   };
+
+  syncThick();      // 按钮初始态：还没数据 → 置灰，等上层推厚度数值过来
 
   function setMsg(html) {
     if (html == null) { msgEl.hidden = true; msgEl.innerHTML = ''; }

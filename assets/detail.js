@@ -200,6 +200,274 @@
         ? '主尺寸 ' + st.mShown + '/' + st.main + ' · 其他参数 ' + st.oShown + '/' + st.oth
         : '该盒型无标注数据';
     }
+
+    applyArt2d();     // innerHTML 刚被重写，贴图垫层要重新挂回去
+  }
+
+  /* ==================== 贴图（图稿）与纸板厚度 ==================== */
+
+  var artImg = null;            // 用户选的图（已解码）
+  var artURL = null;            // objectURL
+  var artFit = 'stretch';       // stretch 铺满 / contain 保持比例
+  var artOn2d = true, artOn3d = true, artOpacity = 0.55;
+  /* 摆放：sx/sy 缩放、rot 顺时针角度、dx/dy 位移（占展开图宽高的比例）。
+     2D 走 SVG transform、3D 走 UV 逆变换，定义完全一致（见 view3d.js artUV）。 */
+  var artXf = { sx: 1, sy: 1, rot: 0, dx: 0, dy: 0 };
+  var artLock = true;           // 等比锁：动横向时纵向跟着走
+
+  /** 图稿落位矩形（展开图坐标，mm）：stretch=整个包围盒，contain=按图片比例居中后那块 */
+  function artRect() {
+    var b = G.b;
+    var x0 = Math.min(b[0], b[2]), y0 = Math.min(b[1], b[3]);
+    var bw = Math.abs(b[2] - b[0]) || 1, bh = Math.abs(b[3] - b[1]) || 1;
+    var fx = x0, fy = y0, fw = bw, fh = bh;
+    if (artFit === 'contain' && artImg && artImg.width && artImg.height) {
+      var r = artImg.width / artImg.height, rb = bw / bh;
+      if (r > rb) { fh = bw / r; fy = y0 + (bh - fh) / 2; }      // 图更扁：上下留白
+      else { fw = bh * r; fx = x0 + (bw - fw) / 2; }             // 图更瘦：左右留白
+    }
+    return { x0: x0, y0: y0, bw: bw, bh: bh, fx: fx, fy: fy, fw: fw, fh: fh };
+  }
+
+  var SVGNS = 'http://www.w3.org/2000/svg';
+
+  /** 2D 展开图上把贴图垫在刀模线底下：插成 SVG 第一个子元素，且不拦鼠标。
+      外面套一层 <g clip-path> —— 旋转/放大之后图会超出展开图轮廓，
+      不裁掉就会糊到尺寸标注上去。 */
+  function applyArt2d() {
+    var svg = $('canvasInner').querySelector('svg');
+    if (!svg) return;
+    var old = svg.querySelector('.art-layer');
+    if (old) old.parentNode.removeChild(old);
+    var oldClip = svg.querySelector('#artClip');
+    if (oldClip) oldClip.parentNode.removeChild(oldClip);
+    if (!artImg || !artOn2d || !G.b || !artURL) return;
+    var R = artRect();
+
+    var defs = svg.querySelector('defs');
+    if (!defs) { defs = document.createElementNS(SVGNS, 'defs'); svg.insertBefore(defs, svg.firstChild); }
+    var cp = document.createElementNS(SVGNS, 'clipPath');
+    cp.setAttribute('id', 'artClip');
+    cp.setAttribute('clipPathUnits', 'userSpaceOnUse');
+    var rc = document.createElementNS(SVGNS, 'rect');
+    rc.setAttribute('x', R.x0); rc.setAttribute('y', R.y0);
+    rc.setAttribute('width', R.bw); rc.setAttribute('height', R.bh);
+    cp.appendChild(rc);
+    defs.appendChild(cp);
+
+    var g = document.createElementNS(SVGNS, 'g');
+    g.setAttribute('class', 'art-layer');
+    g.setAttribute('clip-path', 'url(#artClip)');
+
+    var img = document.createElementNS(SVGNS, 'image');
+    img.setAttribute('x', R.fx);
+    img.setAttribute('y', R.fy);
+    img.setAttribute('width', R.fw);
+    img.setAttribute('height', R.fh);
+    /* 贴合方式已经折算进上面的落位矩形，这里一律 none，剩下的全交给 transform */
+    img.setAttribute('preserveAspectRatio', 'none');
+    img.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', artURL);
+    img.setAttributeNS(null, 'href', artURL);
+    img.setAttribute('opacity', artOpacity);
+    /* 摆放：绕展开图中心 → 位移 → 缩放 → 顺时针旋转（与 3D 的 UV 逆变换同一个定义） */
+    var cx = R.x0 + R.bw / 2, cy = R.y0 + R.bh / 2;
+    img.setAttribute('transform',
+      'translate(' + (cx + artXf.dx * R.bw) + ',' + (cy + artXf.dy * R.bh) + ') ' +
+      'scale(' + artXf.sx + ',' + artXf.sy + ') rotate(' + artXf.rot + ') ' +
+      'translate(' + (-cx) + ',' + (-cy) + ')');
+    g.appendChild(img);
+    svg.insertBefore(g, svg.firstChild);
+  }
+
+  /** 3D：整张展开图当印刷面，UV 由 view3d 按展开坐标归一化（摆放参数一起传过去） */
+  function applyArt3d() {
+    if (!v3d) return;
+    if (artImg && artOn3d) v3d.setArt(artImg, artFit, artXf);
+    else v3d.clearArt();
+  }
+
+  /** 只改摆放：3D 走 setArtXf（不重建纹理），2D 重挂一次 <image> */
+  function applyArtXf() {
+    if (v3d) v3d.setArtXf(artXf);
+    applyArt2d();
+  }
+
+  /** 3D 加厚：厚度用上游求解回来的 cal / inner / outer（多数盒型内外不对称）。
+      这里只负责把数值推给 3D；开不加厚由 3D 视图里的「纸厚」按钮决定。 */
+  function applyThickness() {
+    var cal = +ceLive.cal || 0, inn = +ceLive.inner || 0, out = +ceLive.outer || 0;
+    var info = $('thickInfo');
+    if (info) {
+      info.textContent = cal
+        ? '纸板厚 ' + V2.num(cal) + 'mm（内 ' + V2.num(inn) + ' / 外 ' + V2.num(out) + '）· 立体图用「纸厚」按钮开关'
+        : '该盒型没有厚度数据';
+    }
+    if (!v3d) return;
+    v3d.setThickData(cal, inn, out);
+  }
+
+  function bindArt() {
+    var fileEl = $('texFile');
+    if (!fileEl) return;
+    var pickBtn = $('texPick'), clearBtn = $('texClear');
+
+    pickBtn.addEventListener('click', function () { fileEl.click(); });
+
+    fileEl.addEventListener('change', function () {
+      var f = fileEl.files && fileEl.files[0];
+      if (!f) return;
+      if (artURL) URL.revokeObjectURL(artURL);
+      artURL = URL.createObjectURL(f);
+      var im = new Image();
+      im.onload = function () {
+        artImg = im;
+        clearBtn.disabled = false;
+        var st = $('texState');
+        st.textContent = f.name.length > 22 ? f.name.slice(0, 20) + '…' : f.name;
+        st.title = f.name + ' · ' + im.width + '×' + im.height;
+        st.classList.add('on');
+        applyArt2d();
+        applyArt3d();
+        setStatus('ok', '已贴图（' + im.width + ' × ' + im.height + '），平面图与立体图同步显示');
+      };
+      im.onerror = function () { setStatus('err', '这张图读不出来，换一张试试'); };
+      im.src = artURL;
+    });
+
+    clearBtn.addEventListener('click', function () {
+      artImg = null;
+      if (artURL) { URL.revokeObjectURL(artURL); artURL = null; }
+      fileEl.value = '';
+      clearBtn.disabled = true;
+      var st = $('texState');
+      st.textContent = '未贴图'; st.title = ''; st.classList.remove('on');
+      applyArt2d();
+      applyArt3d();
+    });
+
+    $('texFit').addEventListener('change', function () {
+      artFit = this.value;
+      applyArt2d();
+      applyArt3d();
+    });
+    $('texOn2d').addEventListener('change', function () { artOn2d = this.checked; applyArt2d(); });
+    $('texOn3d').addEventListener('change', function () { artOn3d = this.checked; applyArt3d(); });
+    $('texOpacity').addEventListener('input', function () {
+      artOpacity = (+this.value || 100) / 100;
+      $('texOpVal').textContent = this.value + '%';
+      applyArt2d();
+    });
+
+    /* ---- 摆放：缩放 / 拉伸 / 旋转 / 位移 ---- */
+
+    function syncXfUI() {
+      $('texSx').value = Math.round(artXf.sx * 100);
+      $('texSy').value = Math.round(artXf.sy * 100);
+      $('texRot').value = Math.round(artXf.rot);
+      $('texDx').value = Math.round(artXf.dx * 100);
+      $('texDy').value = Math.round(artXf.dy * 100);
+      $('texSxVal').textContent = (+artXf.sx).toFixed(2) + '×';
+      $('texSyVal').textContent = (+artXf.sy).toFixed(2) + '×';
+      $('texRotVal').textContent = Math.round(artXf.rot) + '°';
+      $('texDxVal').textContent = String(Math.round(artXf.dx * 100));
+      $('texDyVal').textContent = String(Math.round(artXf.dy * 100));
+      $('texLock').classList.toggle('on', artLock);
+      $('texLock').setAttribute('aria-pressed', String(artLock));
+    }
+
+    function onSx() {
+      artXf.sx = (+this.value) / 100;
+      if (artLock) artXf.sy = artXf.sx;
+      syncXfUI(); applyArtXf();
+    }
+    function onSy() {
+      artXf.sy = (+this.value) / 100;
+      if (artLock) artXf.sx = artXf.sy;
+      syncXfUI(); applyArtXf();
+    }
+    $('texSx').addEventListener('input', onSx);
+    $('texSy').addEventListener('input', onSy);
+    $('texRot').addEventListener('input', function () {
+      artXf.rot = +this.value; syncXfUI(); applyArtXf();
+    });
+    $('texRot90').addEventListener('click', function () {
+      var r = Math.round(artXf.rot) + 90;
+      if (r > 180) r -= 360;
+      artXf.rot = r; syncXfUI(); applyArtXf();
+    });
+    $('texDx').addEventListener('input', function () {
+      artXf.dx = (+this.value) / 100; syncXfUI(); applyArtXf();
+    });
+    $('texDy').addEventListener('input', function () {
+      artXf.dy = (+this.value) / 100; syncXfUI(); applyArtXf();
+    });
+    $('texLock').addEventListener('click', function () {
+      artLock = !artLock;
+      if (artLock) artXf.sy = artXf.sx;          // 锁上时把纵向拉回跟横向一致
+      syncXfUI(); applyArtXf();
+    });
+    $('texReset').addEventListener('click', function () {
+      artXf = { sx: 1, sy: 1, rot: 0, dx: 0, dy: 0 };
+      syncXfUI(); applyArtXf();
+    });
+    syncXfUI();
+
+    /* 验收探针用（无头浏览器回归测试）：暴露内部状态，正常使用不受影响 */
+    window.__v2dbg = {
+      v3d: function () { return v3d; },
+      art: function () { return { has: !!artImg, fit: artFit, on2d: artOn2d, on3d: artOn3d, op: artOpacity }; },
+      xf: function () { return { sx: artXf.sx, sy: artXf.sy, rot: artXf.rot, dx: artXf.dx, dy: artXf.dy, lock: artLock }; },
+      /* 2D 实际挂上去的 <image>：摆放到位没有，看它的 transform 与落位矩形 */
+      art2d: function () {
+        var g = $('canvasInner').querySelector('.art-layer');
+        var im = g && g.querySelector('image');
+        if (!im) return null;
+        return {
+          x: +im.getAttribute('x'), y: +im.getAttribute('y'),
+          w: +im.getAttribute('width'), h: +im.getAttribute('height'),
+          tf: im.getAttribute('transform'), op: +im.getAttribute('opacity')
+        };
+      },
+      bbox: function () { return G && G.b ? G.b.slice() : null; },
+      /* 验收用：无头浏览器点不了文件选择框，直接拿一张 data URL 的图当图稿 */
+      loadArt: function (url) {
+        return new Promise(function (res, rej) {
+          var im = new Image();
+          im.onload = function () {
+            artImg = im; artURL = url;
+            $('texClear').disabled = false;
+            var st = $('texState');
+            st.textContent = 'test ' + im.width + '×' + im.height; st.classList.add('on');
+            applyArt2d(); applyArt3d();
+            res({ w: im.width, h: im.height });
+          };
+          im.onerror = function () { rej(new Error('图读不出来')); };
+          im.src = url;
+        });
+      },
+      /* 验收用：3D 那边同一个展开图坐标算出来的 UV，跟 2D 的 transform 反算值对比 */
+      uv3d: function (nx, ny) { return v3d ? v3d.uvAt(nx, ny) : null; },
+      status: function () { var el = $('status'); return el ? el.textContent : ''; },
+      thick: function () {
+        var t = v3d ? v3d.thick() : null;
+        return {
+          on: t ? t.on : false,
+          btn: v3d ? $('view3d').querySelector('.v3d-thick').classList.contains('on') : false,
+          cal: +ceLive.cal || 0, inner: +ceLive.inner || 0, outer: +ceLive.outer || 0,
+          applied: t ? t.cal : 0
+        };
+      },
+      setXf: function (xf) {
+        if (xf.sx != null) artXf.sx = +xf.sx;
+        if (xf.sy != null) artXf.sy = +xf.sy;
+        if (xf.rot != null) artXf.rot = +xf.rot;
+        if (xf.dx != null) artXf.dx = +xf.dx;
+        if (xf.dy != null) artXf.dy = +xf.dy;
+        syncXfUI(); applyArtXf();
+        return { sx: artXf.sx, sy: artXf.sy, rot: artXf.rot, dx: artXf.dx, dy: artXf.dy };
+      },
+      fileEl: function () { return $('texFile'); }
+    };
   }
 
   /** 展开口径对应的上游 choose：制造=3 / 内=1 / 外=2 */
@@ -444,6 +712,8 @@
       v3d.setVisible(true);
       return v3dStale ? refresh3D(true) : v3d.load(ID);
     }).then(function () {
+      applyArt3d();          // 3D 建好了：把贴图挂上去
+      applyThickness();      // 并按当前厚度开关重建（若开了加厚）
       setStatus('', '3D 立体图已就绪');
     }).catch(function (e) {
       if (e && e.code === 'nofold') {
@@ -579,6 +849,8 @@
     });
 
     renderOtherParams();
+    bindArt();                 // 贴图 / 纸板厚度面板
+    applyThickness();          // 先把厚度数字显示出来（3D 是否加厚看开关）
     $('btnReset').addEventListener('click', resetAll);
     $('btnApply').addEventListener('click', function () { recompute(true); });
   }
@@ -1131,6 +1403,8 @@
             ? ' · ' + pmsFixed.length + ' 项已按盒型规则校正（' + pmsFixed.slice(0, 3).join('、')
               + (pmsFixed.length > 3 ? ' 等' : '') + '）'
             : ''));
+        /* 纸厚/尺寸变了 → 厚度数字跟着刷新；3D 开着且开了加厚就按新厚度重建 */
+        applyThickness();
         /* 尺寸一变，手上的 3D 折叠树就作废。3D 开着就立刻按新尺寸重做，
            没开就留下过期标记，等下次进 3D 时再取（不白打接口）。 */
         v3dStale = true;

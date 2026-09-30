@@ -8,7 +8,7 @@
 <meta name="robots" content="noindex">
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/style.css?v=f79045c41e">
+<link rel="stylesheet" href="assets/style.css?v=c68bda20f5">
 <style>
   .sug-box {
     position: absolute; top: calc(100% + 6px); left: 0; right: 0;
@@ -197,6 +197,69 @@
       <span style="margin-left:auto">左键旋转 · 中键平移 · 滚轮缩放</span>
     </div>
   </section>
+
+    <!-- ========== 贴图（夹在平面展开图与 3D 立体之间，两视图共用） ========== -->
+    <section class="panel tex-panel">
+      <div class="panel-head">
+        <h2>贴图</h2>
+        <span class="tex-state" id="texState">未贴图</span>
+      </div>
+      <div class="panel-body tex-body">
+        <div class="tex-pick">
+          <button class="btn btn-sm btn-primary" id="texPick" type="button">选择图片</button>
+          <input type="file" id="texFile" accept="image/*" hidden>
+          <button class="btn btn-sm" id="texClear" type="button" disabled>清除贴图</button>
+          <span class="tex-tip" title="图片按整张展开图铺到盒面上，折起来图案跟着面板走，不会在折痕处错位">整张展开图 = 一张印刷面</span>
+          <span class="tex-thickinfo" id="thickInfo" title="纸板厚度取自盒型求解结果；是否在立体图上加厚，由 3D 视图里的「纸厚」按钮决定">—</span>
+        </div>
+        <div class="tex-row">
+          <label class="tex-lb">贴合
+            <select id="texFit">
+              <option value="stretch">铺满展开图</option>
+              <option value="contain">保持比例居中</option>
+            </select>
+          </label>
+          <label class="tex-lb">平面图上
+            <input type="checkbox" id="texOn2d" checked>
+          </label>
+          <label class="tex-lb" title="3D 立体盒上显示这张贴图">立体图上
+            <input type="checkbox" id="texOn3d" checked>
+          </label>
+          <label class="tex-lb tex-op" title="平面图上的贴图透明度（方便对照刀模线）">不透明度
+            <input type="range" id="texOpacity" min="10" max="100" value="55" step="5">
+            <b id="texOpVal">55%</b>
+          </label>
+        </div>
+        <!-- 贴图在展开图上的摆放：缩放 / 拉伸 / 旋转 / 位移，平面图与立体图用同一套参数 -->
+        <div class="tex-row tex-xf">
+          <label class="tex-lb tex-rg" title="横向缩放（1× = 正好铺满展开图）">缩放
+            <input type="range" id="texSx" min="20" max="400" step="5" value="100">
+            <b id="texSxVal">1.00×</b>
+          </label>
+          <label class="tex-lb tex-rg" title="纵向缩放；想拉伸成非等比，先解开右边的「等比」">纵向
+            <input type="range" id="texSy" min="20" max="400" step="5" value="100">
+            <b id="texSyVal">1.00×</b>
+          </label>
+          <button class="btn btn-sm" id="texLock" type="button" aria-pressed="true" title="锁定横纵比例，一起缩放">等比</button>
+          <label class="tex-lb tex-rg" title="绕展开图中心顺时针旋转">旋转
+            <input type="range" id="texRot" min="-180" max="180" step="1" value="0">
+            <b id="texRotVal">0°</b>
+          </label>
+          <button class="btn btn-sm" id="texRot90" type="button" title="每次顺时针转 90°">转 90°</button>
+        </div>
+        <div class="tex-row tex-xf">
+          <label class="tex-lb tex-rg" title="左右移动（按展开图宽度的百分比）">左右
+            <input type="range" id="texDx" min="-50" max="50" step="1" value="0">
+            <b id="texDxVal">0</b>
+          </label>
+          <label class="tex-lb tex-rg" title="上下移动（按展开图高度的百分比）">上下
+            <input type="range" id="texDy" min="-50" max="50" step="1" value="0">
+            <b id="texDyVal">0</b>
+          </label>
+          <button class="btn btn-sm" id="texReset" type="button" title="回到「铺满展开图、不旋转、居中」">复位摆放</button>
+        </div>
+      </div>
+    </section>
   </div>
 
   <!-- ========== 右：信息卡 ========== -->
@@ -240,8 +303,8 @@
   <div class="related-row" id="relatedRow"></div>
 </div>
 
-<script src="assets/common.js?v=f79045c41e"></script>
-<script src="assets/export.js?v=f79045c41e"></script>
-<script src="assets/detail.js?v=f79045c41e"></script>
+<script src="assets/common.js?v=c68bda20f5"></script>
+<script src="assets/export.js?v=c68bda20f5"></script>
+<script src="assets/detail.js?v=c68bda20f5"></script>
 </body>
 </html>
