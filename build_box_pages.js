@@ -118,6 +118,22 @@ function esc(s) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/* ---------------- 百度统计（全站页面统一注入） ----------------
+   插在每个页面 </head> 之前（官方建议位置）。根 index.html 与 box.html
+   不在本生成器管辖内，由各自文件手动维护同一段 STAT_HTML；
+   CI 每月重跑本生成器，所以这里写死、别从别处 import。 */
+const BAIDU_HM_ID = '87c8e0d5bc10316e4785ef9f6300beeb';
+const STAT_HTML =
+  '<script>\n' +
+  'var _hmt = _hmt || [];\n' +
+  '(function() {\n' +
+  'var hm = document.createElement("script");\n' +
+  'hm.src = "https://hm.baidu.com/hm.js?' + BAIDU_HM_ID + '";\n' +
+  'var s = document.getElementsByTagName("script")[0];\n' +
+  's.parentNode.insertBefore(hm, s);\n' +
+  '})();\n' +
+  '</script>\n';
+
 /* ---------------- 根页 SEO 头部的数字回写 ---------------- */
 
 /**
@@ -321,6 +337,7 @@ function renderPage(o) {
     '<meta property="og:url" content="' + esc(url) + '">\n' +
     '<meta name="twitter:card" content="summary">\n' +
     '<script type="application/ld+json">' + JSON.stringify(ld) + '</script>\n' +
+    STAT_HTML +
     '</head>\n<body>\n' +
 
     '<nav class="crumb"><a href="../index.html">盒型库</a> &rsaquo; ' +
@@ -386,6 +403,7 @@ function renderIndex(ids, byCat, cateName, meta) {
     '<link rel="icon" href="../favicon.ico" sizes="any">\n' +
     '<link rel="icon" href="../favicon.svg" type="image/svg+xml">\n' +
     '<link rel="stylesheet" href="box.css">\n' +
+    STAT_HTML +
     '</head>\n<body>\n' +
     '<nav class="crumb"><a href="../../index.html">纸盒刀模设计器</a> &rsaquo; <strong>盒型库</strong></nav>\n' +
     '<h1>纸盒盒型库（' + total + ' 种）</h1>\n' +
