@@ -20,6 +20,9 @@ const vm = require('vm');
 
 const ROOT = __dirname;
 const OUT_DIR = path.join(ROOT, 'box');
+// 英文站：/en/ 是入口，/en/box/ 是盒型库，盒型页在 /en/box/<ID>/
+const EN_ROOT = path.join(ROOT, 'en');
+const EN_DIR = path.join(EN_ROOT, 'box');
 const BASE = 'https://057300.xyz/diecut';
 const TODAY = new Date().toISOString().slice(0, 10);
 
@@ -134,6 +137,171 @@ const STAT_HTML =
   '})();\n' +
   '</script>\n';
 
+/* ---------------- robots.txt ----------------
+   生成式引擎（AI 搜索/助手）的爬虫在这里显式放行 —— 这是 GEO 里少数
+   「确定有用」的动作：被拦的爬虫不可能引用你的内容。
+   ⚠️ Bytespider 有争议（大量站点选择屏蔽，且被指不严格遵守 robots），
+   这里不显式声明，保持中立；要拦就单独加一段 Disallow。 */
+const ROBOTS_TXT =
+  'User-agent: *\nAllow: /\n\n' +
+  'User-agent: GPTBot\nAllow: /\n\n' +
+  'User-agent: OAI-SearchBot\nAllow: /\n\n' +
+  'User-agent: ClaudeBot\nAllow: /\n\n' +
+  'User-agent: PerplexityBot\nAllow: /\n\n' +
+  'User-agent: CCBot\nAllow: /\n\n' +
+  'User-agent: Google-Extended\nAllow: /\n\n' +
+  'User-agent: Applebot-Extended\nAllow: /\n\n' +
+  'Sitemap: ' + BASE + '/sitemap.xml\n';
+
+/* ---------------- 分类英文名（英文站 /en/ 用） ----------------
+   分类名只在 packmage 数据源里有中文版，英文版按结构含义手工定名，
+   保留原前缀（A. / BQ. / JP.）以便与盒型编号对照。 */
+const CAT_EN = {
+  0: 'Free',
+  1: 'A. Tube Boxes',
+  2: 'B. Extended Tube Boxes',
+  3: 'D. Tray Boxes',
+  4: 'C. Rigid Lid-Base Boxes',
+  5: 'E. Hinged Lid Boxes',
+  6: 'I. Drawer Boxes',
+  7: 'Z. Irregular Shaped Boxes',
+  8: 'L. Display Boxes',
+  9: 'J. Common Cartons',
+  10: 'M. Inserts & Partitions',
+  11: 'F. Paper Bags',
+  12: 'G. Envelopes & Folders',
+  13: 'S. Labels & Hang Tags',
+  14: 'Q. Display Stands',
+  15: 'R. Plastic Sheet Boxes',
+  16: 'JP. Gift & Premium Boxes',
+  17: 'BQ. Others',
+  18: 'Y. Rounded Corner Boxes',
+  19: 'U. Flexible Packaging',
+  20: 'X. Imposition'
+};
+
+/* ---------------- 英文站文案 ----------------
+   ⚠️ 刻意不翻译中文盒型名：数据源里根本没有 name 字段（只有中文 tags），
+   硬翻既无依据又易错。英文页改用「盒型代码 + 分类英文名 + 真实几何数据」
+   的组合 —— 代码本身就是国际通用名，而尺寸/线数是语言无关的原创数据，
+   恰好也是生成式引擎最愿意引用的那类事实。 */
+function enCatsOf(mask, cateName) {
+  const out = [];
+  for (let i = 1; i <= 20; i++) if (mask & (1 << i)) out.push(CAT_EN[i] || ('Category ' + i));
+  return out;
+}
+
+/** 判断是不是 FEFCO 标准码：盒型编号以数字开头（如 0201 / 0312B / 0422） */
+function isFefco(id) { return /^[0-9]/.test(id); }
+
+/**
+ * hreflang 三件套：中文页与英文页互指 + x-default 兜底。
+ * ⚠️ 必须双向输出（中页指英页、英页指中页），单向 Google 会忽略。
+ * 生成器渲染与本地批量插入脚本共用它，保证两条路径字节一致。
+ */
+function altLinks(id) {
+  const p = encodeURIComponent(id);
+  const zh = BASE + '/box/' + p + '/';
+  const en = BASE + '/en/box/' + p + '/';
+  return '<link rel="alternate" hreflang="zh-CN" href="' + esc(zh) + '">\n' +
+    '<link rel="alternate" hreflang="en" href="' + esc(en) + '">\n' +
+    '<link rel="alternate" hreflang="x-default" href="' + esc(zh) + '">\n';
+}
+
+/** 目录页的 hreflang（中英各一份目录，同样互指） */
+function altLinksIndex() {
+  const zh = BASE + '/box/';
+  const en = BASE + '/en/box/';
+  return '<link rel="alternate" hreflang="zh-CN" href="' + esc(zh) + '">\n' +
+    '<link rel="alternate" hreflang="en" href="' + esc(en) + '">\n' +
+    '<link rel="alternate" hreflang="x-default" href="' + esc(zh) + '">\n';
+}
+
+/** 英文盒型页：标题 / 描述 / FAQ，全部由真实数据拼出 */
+function enCopy(d) {
+  const catEn = d.catsEn.length ? d.catsEn.join(', ') : 'Uncategorized';
+  const kind = isFefco(d.id) ? 'FEFCO ' + d.id : 'Box type ' + d.id;
+  const title = kind + ' — ' + catEn + ' Die-cut Template Generator';
+  const desc = kind + ' die-cut template (' + catEn + '). Flat size ' + d.w + ' × ' + d.h +
+    ' mm, ' + d.nCut + ' cut lines and ' + d.nCrease + ' crease lines. Adjust length, width ' +
+    'and depth online, recalculate instantly, and export SVG / DXF / PDF. Free, no signup.';
+  const dims = [];
+  if (d.ce) {
+    ['l', 'w', 'd'].forEach((k) => {
+      if (d.ce[k] != null) dims.push(k.toUpperCase() + ' ' + d.ce[k] + ' mm');
+    });
+  }
+  const faq = [];
+  faq.push(['What are the default dimensions of box type ' + d.id + '?',
+    dims.length
+      ? 'The default size is ' + dims.join(', ') + '. The flat (unfolded) sheet measures ' +
+        d.w + ' × ' + d.h + ' mm.'
+      : 'The flat (unfolded) sheet measures ' + d.w + ' × ' + d.h + ' mm.']);
+  faq.push(['How many cut and crease lines does box type ' + d.id + ' have?',
+    'The template contains ' + d.nCut + ' cut lines and ' + d.nCrease + ' crease lines.']);
+  faq.push(['Can I change the dimensions of box type ' + d.id + '?',
+    d.params.length
+      ? 'Yes. ' + d.params.length + ' parameters are adjustable, including ' +
+        d.params.slice(0, 6).join(', ') + '. The die-cut outline is recalculated on every change.'
+      : 'This box type has no open editing parameters.']);
+  faq.push(['Which export formats are supported?',
+    'SVG, DXF (R12), PDF and PNG. Cut and crease lines are kept as separate layers in SVG.']);
+  return {
+    title: title,
+    desc: desc,
+    catEn: catEn,
+    faq: faq,
+    h1: kind + ' box template',
+    lead: 'Box type ' + d.id + ' is classified under ' + catEn + '. The flat (unfolded) sheet ' +
+      'measures ' + d.w + ' × ' + d.h + ' mm and contains ' + d.nCut + ' cut lines and ' +
+      d.nCrease + ' crease lines. The drawing below is computed from the default parameters' +
+      (d.op ? ' (' + d.op + ')' : '') + '. Open it in the designer to change the dimensions, ' +
+      'recalculate in real time, and export SVG / DXF / PDF.',
+    cap: 'Figure: ' + d.id + ' die-cut layout — solid lines are cut lines, ' +
+      'dashed lines are crease lines',
+    cta: 'Open ' + d.id + ' in the designer',
+    secParam: 'Adjustable parameters',
+    secStruct: 'Structure details',
+    secFaq: 'Frequently asked questions',
+    secTags: 'Structure & application tags',
+    secRel: 'Related box types',
+    thCode: 'Code',
+    thDefault: 'Default',
+    lbCode: 'Box code',
+    lbCat: 'Category',
+    lbFlat: 'Flat size',
+    lbLines: 'Cut / crease lines',
+    lbDefault: 'Default parameters',
+    libLink: 'Box library',
+    designerLink: 'Box die-cut designer',
+    empty: 'No previewable geometry data is available for this box type yet. ' +
+      'You can open it in the designer instead.'
+  };
+}
+
+/** ce 是 'l=200,w=100,d=250,...' 形式的字符串（key 一律小写） */
+function parseCe(s) {
+  const o = {};
+  String(s || '').split(',').forEach((kv) => {
+    const i = kv.indexOf('=');
+    if (i > 0) o[kv.slice(0, i).trim().toLowerCase()] = kv.slice(i + 1).trim();
+  });
+  return o;
+}
+
+/** FAQPage 结构化数据：问答内容全部来自上一步真实计算，不写死 */
+function faqLd(faq) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faq.map(([q, a]) => ({
+      '@type': 'Question',
+      name: q,
+      acceptedAnswer: { '@type': 'Answer', text: a }
+    }))
+  };
+}
+
 /* ---------------- 根页 SEO 头部的数字回写 ---------------- */
 
 /**
@@ -207,10 +375,14 @@ function main() {
   });
 
   fs.rmSync(OUT_DIR, { recursive: true, force: true });
+  // 英文目录整棵重建，保证与本次数据完全同步（en/ 纯生成物，不含手写内容）
+  fs.rmSync(EN_ROOT, { recursive: true, force: true });
   fs.mkdirSync(OUT_DIR, { recursive: true });
+  fs.mkdirSync(EN_DIR, { recursive: true });
 
   boxTotal = ids.length;
   fs.writeFileSync(path.join(OUT_DIR, 'box.css'), CSS);
+  fs.writeFileSync(path.join(EN_DIR, 'box.css'), CSS);
 
   let count = 0;
   let noGeom = 0;
@@ -222,7 +394,8 @@ function main() {
     const w = n1(de.w || (geo.bbox.maxX - geo.bbox.minX));
     const h = n1(de.h || (geo.bbox.maxY - geo.bbox.minY));
     const tags = tagsOf(id);
-    const cats = decodeCats(meta[id] ? meta[id].mask : 0);
+    const mask = meta[id] ? meta[id].mask : 0;
+    const cats = decodeCats(mask);
     const editable = (box.pm || []).filter((p) => p.l === 0);
     const hasGeom = geo.cuts.length + geo.creases.length >= 2;
     if (!hasGeom) noGeom++;
@@ -246,21 +419,28 @@ function main() {
     count++;
   }
 
-  // 目录页
-  fs.writeFileSync(path.join(OUT_DIR, 'index.html'), renderIndex(ids, byCat, cateName, meta));
+  // 目录页（中英各一份）
+  fs.writeFileSync(path.join(OUT_DIR, 'index.html'), renderIndex(ids, byCat, cateName, meta, 'zh'));
+  fs.writeFileSync(path.join(EN_DIR, 'index.html'), renderIndex(ids, byCat, cateName, meta, 'en'));
 
-  // sitemap
+  // 英文站入口页 /en/
+  fs.writeFileSync(path.join(EN_ROOT, 'index.html'), renderEnHome(ids, byCat, cateName, ids.length));
+
+  // sitemap：中英成对，条目里直接带 hreflang 互指
   const urls = [];
-  urls.push(loc(BASE + '/', '1.0'));
-  urls.push(loc(BASE + '/box/', '0.8'));
-  ids.forEach((id) => urls.push(loc(BASE + '/box/' + encodeURIComponent(id) + '/', '0.6')));
+  urls.push(locAlt(BASE + '/', BASE + '/en/', '1.0'));
+  urls.push(locAlt(BASE + '/box/', BASE + '/en/box/', '0.8'));
+  ids.forEach((id) => {
+    const p = encodeURIComponent(id);
+    urls.push(locAlt(BASE + '/box/' + p + '/', BASE + '/en/box/' + p + '/', '0.6'));
+  });
   fs.writeFileSync(path.join(ROOT, 'sitemap.xml'),
     '<?xml version="1.0" encoding="UTF-8"?>\n' +
-    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" ' +
+    'xmlns:xhtml="http://www.w3.org/1999/xhtml">\n' +
     urls.join('\n') + '\n</urlset>\n');
 
-  fs.writeFileSync(path.join(ROOT, 'robots.txt'),
-    'User-agent: *\nAllow: /\n\nSitemap: ' + BASE + '/sitemap.xml\n');
+  fs.writeFileSync(path.join(ROOT, 'robots.txt'), ROBOTS_TXT);
 
   // 根页 SEO 头部的盒型数 / 分类数跟着一起走，免得上线后标题还挂着旧数字
   const idxSync = syncIndexCounts(ids.length, cates.length);
@@ -283,27 +463,77 @@ function loc(u, pri) {
     '<changefreq>monthly</changefreq><priority>' + pri + '</priority></url>';
 }
 
+/** sitemap 条目：中英**各一条** <url>，每条都带 hreflang 互指。
+    早期版本只把英文页写成 alternate，英文页没有独立 <loc>，收录完全依赖 Google 解析 hreflang；
+    给出独立条目后英文页可被直接抓取，对英文引流更快见效。 */
+function locAlt(uZh, uEn, pri) {
+  const links =
+    '    <xhtml:link rel="alternate" hreflang="zh-CN" href="' + esc(uZh) + '"/>\n' +
+    '    <xhtml:link rel="alternate" hreflang="en" href="' + esc(uEn) + '"/>\n' +
+    '    <xhtml:link rel="alternate" hreflang="x-default" href="' + esc(uZh) + '"/>\n';
+  const one = (loc, p) =>
+    '  <url>\n' +
+    '    <loc>' + esc(loc) + '</loc>\n' +
+    '    <lastmod>' + TODAY + '</lastmod>\n' +
+    '<changefreq>monthly</changefreq><priority>' + p + '</priority>\n' +
+    links +
+    '  </url>';
+  return one(uZh, pri) + '\n' + one(uEn, pri);
+}
+
 /* ---------------- 页面模板 ---------------- */
 
-function renderPage(o) {
-  const { id, box, geo, w, h, tags, cats, editable, rel, title, desc, hasGeom } = o;
-  const url = BASE + '/box/' + encodeURIComponent(id) + '/';
-  const catText = cats.length ? cats.join('、') : '未分类';
+function renderPage(o, lang) {
+  lang = lang || 'zh';
+  const en = lang === 'en';
+  const { id, box, geo, w, h, tags, cats, editable, rel, hasGeom } = o;
+
+  // 中文页在 /box/<ID>/，英文页在 /en/box/<ID>/ —— 站内相对路径按这个前提写
+  const langRoot = en ? BASE + '/en' : BASE;   // /diecut/en 或 /diecut
+  const url = langRoot + '/box/' + encodeURIComponent(id) + '/';
+  // 中文页 /box/<ID>/，英文页 /en/box/<ID>/ —— 两者都只需退一级就到各自的盒型库目录
+  // （box.css 就放在那里：/box/box.css 与 /en/box/box.css），所以 toLib 对两种语言是一样的。
+  // 早期版本给英文写成 '../../' 会退到 /en/box.css → 404、整页无样式（页面看起来像"无数据"）。
+  const toSite = en ? '../../../' : '../../';   // 回到 /diecut/
+  const toLib = '../';                          // 回到各自的盒型库目录
+
+  const catsEn = en ? enCatsOf(o.mask || 0) : [];
+  const catText = en
+    ? (catsEn.length ? catsEn.join(', ') : 'Uncategorized')
+    : (cats.length ? cats.join('、') : '未分类');
   const op = (box.de && box.de.op) ? box.de.op : '';
+
+  // 英文页的标题/描述/FAQ 全部由真实几何数据拼出，不是写死的模板句
+  const cp = en ? enCopy({
+    id: id, w: w, h: h,
+    nCut: geo.cuts.length, nCrease: geo.creases.length,
+    catsEn: catsEn, ce: parseCe(box.ce), op: op,
+    params: editable.map((p) => String(p.n || ''))
+  }) : null;
+  const title = en ? cp.title : o.title;
+  const desc = en ? cp.desc : o.desc;
 
   const svgBlock = hasGeom
     ? buildSvg(geo)
-    : '<p class="empty">该盒型暂未提供可预览的几何数据，可到设计器中查看。</p>';
+    : en
+      ? '<p class="empty">No previewable geometry data is available for this box type yet. You can open it in the designer instead.</p>'
+      : '<p class="empty">该盒型暂未提供可预览的几何数据，可到设计器中查看。</p>';
 
+  // 英文页只给「代号 + 默认值」两列：数据源里没有英文参数名，不硬翻
   const paramRows = editable.length
     ? editable.map((p) => {
       const key = String(p.n || '').toLowerCase();
       // 样式类 / 选项类参数无单位，尺寸类参数才是 mm
       const unitless = /^sty/.test(key) || key === 'choose' || key === 'cal';
-      return '<tr><td>' + esc(p.d || p.n) + '</td><td><code>' + esc(p.n) + '</code></td>' +
-        '<td>' + esc(p.v) + (unitless ? '' : ' mm') + '</td></tr>';
+      return en
+        ? '<tr><td><code>' + esc(p.n) + '</code></td><td>' + esc(p.v) +
+          (unitless ? '' : ' mm') + '</td></tr>'
+        : '<tr><td>' + esc(p.d || p.n) + '</td><td><code>' + esc(p.n) + '</code></td>' +
+          '<td>' + esc(p.v) + (unitless ? '' : ' mm') + '</td></tr>';
     }).join('\n      ')
-    : '<tr><td colspan="3">该盒型无开放编辑参数</td></tr>';
+    : (en
+      ? '<tr><td colspan="2">This box type has no open editing parameters</td></tr>'
+      : '<tr><td colspan="3">该盒型无开放编辑参数</td></tr>');
 
   const tagChips = tags.map((t) => '<span class="chip">' + esc(t) + '</span>').join('');
 
@@ -313,103 +543,265 @@ function renderPage(o) {
   const ld = {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
-    itemListElement: [
-      { '@type': 'ListItem', position: 1, name: '纸盒刀模设计器', item: BASE + '/' },
-      { '@type': 'ListItem', position: 2, name: '盒型库', item: BASE + '/box/' },
-      { '@type': 'ListItem', position: 3, name: id + ' 盒型刀模图', item: url }
-    ]
+    itemListElement: en
+      ? [
+        { '@type': 'ListItem', position: 1, name: 'Box template library', item: langRoot + '/' },
+        { '@type': 'ListItem', position: 2, name: 'Box library', item: langRoot + '/box/' },
+        { '@type': 'ListItem', position: 3, name: id + ' box template', item: url }
+      ]
+      : [
+        { '@type': 'ListItem', position: 1, name: '纸盒刀模设计器', item: BASE + '/' },
+        { '@type': 'ListItem', position: 2, name: '盒型库', item: BASE + '/box/' },
+        { '@type': 'ListItem', position: 3, name: id + ' 盒型刀模图', item: url }
+      ]
   };
 
-  return '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n' +
+  // hreflang：中文页与英文页互指（两个语言版本都会输出这一段）
+  const enUrl = BASE + '/en/box/' + encodeURIComponent(id) + '/';
+  const altHtml = altLinks(id);
+
+  // 英文页不输出中文标签云（英文读者看不懂，且中英混排拉低可读性）
+  const tagChipsEn = '';
+
+  const kw = en
+    ? (isFefco(id)
+      ? [id, 'FEFCO ' + id, id + ' box template', 'corrugated carton', 'die-cut template', 'packaging box'].join(', ')
+      : [id, id + ' box template', 'packaging box template', 'die-cut template'].join(', '))
+    : [id, id + '刀模', id + '盒型'].concat(tags.slice(0, 6)).join(',');
+
+  // 英文页在 /en/box/<ID>/，「中文版」得退三级回站点根才能到 /box/<ID>/。
+  // 早期版本写成 '../../box/<ID>/' 会解析成 /en/box/<ID>/ —— 等于链回自己。
+  const langSwitch = en
+    ? '<p class="langswitch"><a href="' + toSite + 'box/' + encodeURIComponent(id) + '/">中文版</a></p>\n'
+    : '<p class="langswitch"><a href="' + enUrl + '">English version</a></p>\n';
+
+  return '<!DOCTYPE html>\n<html lang="' + (en ? 'en' : 'zh-CN') + '">\n<head>\n' +
     '<meta charset="UTF-8">\n' +
     '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
     '<title>' + esc(title) + '</title>\n' +
     '<meta name="description" content="' + esc(desc) + '">\n' +
-    '<meta name="keywords" content="' + esc([id, id + '刀模', id + '盒型'].concat(tags.slice(0, 6)).join(',')) + '">\n' +
+    '<meta name="keywords" content="' + esc(kw) + '">\n' +
     '<link rel="canonical" href="' + esc(url) + '">\n' +
-    // 页面在 /box/<ID>/ 下，图标要退两级（站点根 favicon.ico 对子目录无效）
-    '<link rel="icon" href="../../favicon.ico" sizes="any">\n' +
-    '<link rel="icon" href="../../favicon.svg" type="image/svg+xml">\n' +
-    '<link rel="stylesheet" href="../box.css">\n' +
+    altHtml +
+    // 中文页在 /box/<ID>/ 退两级取图标，英文页在 /en/box/<ID>/ 得退三级
+    '<link rel="icon" href="' + toSite + 'favicon.ico" sizes="any">\n' +
+    '<link rel="icon" href="' + toSite + 'favicon.svg" type="image/svg+xml">\n' +
+    '<link rel="stylesheet" href="' + toLib + 'box.css">\n' +
     '<meta property="og:type" content="article">\n' +
     '<meta property="og:title" content="' + esc(title) + '">\n' +
     '<meta property="og:description" content="' + esc(desc) + '">\n' +
     '<meta property="og:url" content="' + esc(url) + '">\n' +
+    '<meta property="og:locale" content="' + (en ? 'en_US' : 'zh_CN') + '">\n' +
     '<meta name="twitter:card" content="summary">\n' +
     '<script type="application/ld+json">' + JSON.stringify(ld) + '</script>\n' +
+    (en ? '<script type="application/ld+json">' + JSON.stringify(faqLd(cp.faq)) + '</script>\n' : '') +
     STAT_HTML +
     '</head>\n<body>\n' +
 
-    '<nav class="crumb"><a href="../index.html">盒型库</a> &rsaquo; ' +
+    '<nav class="crumb"><a href="../index.html">' +
+    (en ? 'Box library' : '盒型库') + '</a> &rsaquo; ' +
     esc(catText) + ' &rsaquo; <strong>' + esc(id) + '</strong></nav>\n' +
 
-    '<h1>' + esc(id) + ' 盒型刀模图</h1>\n' +
-    '<p class="lead">' + esc(id) + ' 属于 ' + esc(catText) + ' 类盒型' +
-    (tags.length ? '，结构关键词：' + esc(tags.slice(0, 5).join('、')) : '') +
-    '。默认展开尺寸 ' + w + ' × ' + h + ' mm，含 ' + geo.cuts.length + ' 条切割线、' +
-    geo.creases.length + ' 条压痕线。下图为按默认参数计算的刀模展开图' +
-    (op ? '（' + esc(op) + '）' : '') + '，可在设计器中调整尺寸实时重算并导出 SVG / DXF / PDF。</p>\n' +
+    '<h1>' + esc(en ? cp.h1 : (id + ' 盒型刀模图')) + '</h1>\n' +
+    '<p class="lead">' + (en ? esc(cp.lead) : (
+      esc(id) + ' 属于 ' + esc(catText) + ' 类盒型' +
+      (tags.length ? '，结构关键词：' + esc(tags.slice(0, 5).join('、')) : '') +
+      '。默认展开尺寸 ' + w + ' × ' + h + ' mm，含 ' + geo.cuts.length + ' 条切割线、' +
+      geo.creases.length + ' 条压痕线。下图为按默认参数计算的刀模展开图' +
+      (op ? '（' + esc(op) + '）' : '') +
+      '，可在设计器中调整尺寸实时重算并导出 SVG / DXF / PDF。'
+    )) + '</p>\n' +
 
     '<div class="fig">' + svgBlock +
-    '<p class="cap">图：' + esc(id) + ' 刀模展开图 — 实线为切割线，虚线为压痕线</p></div>\n' +
+    '<p class="cap">' + esc(en ? cp.cap : ('图：' + id + ' 刀模展开图 — 实线为切割线，虚线为压痕线')) +
+    '</p></div>\n' +
 
-    '<p class="cta"><a class="btn" href="../../index.html?box=' + encodeURIComponent(id) + '">' +
-    '在设计器中打开 ' + esc(id) + '</a></p>\n' +
+    '<p class="cta"><a class="btn" href="' + toSite + 'index.html?box=' +
+    encodeURIComponent(id) + '">' +
+    (en ? ('Open ' + esc(id) + ' in the designer') : ('在设计器中打开 ' + esc(id))) +
+    '</a></p>\n' +
 
-    '<h2>可调参数</h2>\n' +
-    '<table class="ptab">\n  <thead><tr><th>参数</th><th>代号</th><th>默认值</th></tr></thead>\n' +
+    '<h2>' + (en ? cp.secParam : '可调参数') + '</h2>\n' +
+    '<table class="ptab">\n  <thead><tr>' +
+    (en
+      ? '<th>' + cp.thCode + '</th><th>' + cp.thDefault + '</th>'
+      : '<th>参数</th><th>代号</th><th>默认值</th>') +
+    '</tr></thead>\n' +
     '  <tbody>\n      ' + paramRows + '\n  </tbody>\n</table>\n' +
 
-    '<h2>结构信息</h2>\n' +
+    '<h2>' + (en ? cp.secStruct : '结构信息') + '</h2>\n' +
     '<table class="ptab">\n  <tbody>\n' +
-    '      <tr><td>盒型编号</td><td>' + esc(id) + '</td></tr>\n' +
-    '      <tr><td>所属分类</td><td>' + esc(catText) + '</td></tr>\n' +
-    '      <tr><td>展开尺寸</td><td>' + w + ' × ' + h + ' mm</td></tr>\n' +
-    '      <tr><td>切割线 / 压痕线</td><td>' + geo.cuts.length + ' / ' + geo.creases.length + ' 条</td></tr>\n' +
-    (op ? '      <tr><td>默认参数</td><td><code>' + esc(op) + '</code></td></tr>\n' : '') +
+    '      <tr><td>' + (en ? cp.lbCode : '盒型编号') + '</td><td>' + esc(id) + '</td></tr>\n' +
+    '      <tr><td>' + (en ? cp.lbCat : '所属分类') + '</td><td>' + esc(catText) + '</td></tr>\n' +
+    '      <tr><td>' + (en ? cp.lbFlat : '展开尺寸') + '</td><td>' + w + ' × ' + h + ' mm</td></tr>\n' +
+    '      <tr><td>' + (en ? cp.lbLines : '切割线 / 压痕线') + '</td><td>' + geo.cuts.length +
+    ' / ' + geo.creases.length + (en ? '' : ' 条') + '</td></tr>\n' +
+    (op ? '      <tr><td>' + (en ? cp.lbDefault : '默认参数') + '</td><td><code>' +
+      esc(op) + '</code></td></tr>\n' : '') +
     '  </tbody>\n</table>\n' +
 
-    (tagChips ? '<h2>结构与用途标签</h2>\n<div class="chips">' + tagChips + '</div>\n' : '') +
+    (en
+      ? '<h2>' + cp.secFaq + '</h2>\n<div class="faq">\n' +
+        cp.faq.map(([q, a]) =>
+          '  <h3>' + esc(q) + '</h3>\n  <p>' + esc(a) + '</p>\n').join('') + '</div>\n'
+      : (tagChips ? '<h2>结构与用途标签</h2>\n<div class="chips">' + tagChips + '</div>\n' : '')) +
 
-    (rel.length ? '<h2>同类盒型</h2>\n<div class="rel">\n      ' + relLinks + '\n</div>\n' : '') +
+    (rel.length ? '<h2>' + (en ? cp.secRel : '同类盒型') + '</h2>\n<div class="rel">\n      ' +
+      relLinks + '\n</div>\n' : '') +
 
-    '<footer><a href="' + BASE + '/box/">盒型库</a> &middot; 全站 ' + boxTotal + ' 个盒型 &middot; ' +
-    '<a href="../../index.html">纸盒刀模设计器</a></footer>\n' +
+    langSwitch +
+
+    '<footer><a href="' + langRoot + '/box/">' + (en ? cp.libLink : '盒型库') + '</a> &middot; ' +
+    (en ? (boxTotal + ' box types in total') : ('全站 ' + boxTotal + ' 个盒型')) + ' &middot; ' +
+    '<a href="' + toSite + 'index.html">' + (en ? cp.designerLink : '纸盒刀模设计器') +
+    '</a></footer>\n' +
     '</body>\n</html>\n';
 }
 
 // main() 一开始就会按真实盒型数覆盖它，这里只是占位（不要在别处假设它非 0）
 let boxTotal = 0;
 
-function renderIndex(ids, byCat, cateName, meta) {
+/**
+ * 不走 main()（比如只生成英文站）时必须先调它灌入真实盒型数，
+ * 否则页脚的「全站 N 个盒型」会渲染成 0。
+ */
+function setBoxTotal(n) { boxTotal = n; }
+
+function renderIndex(ids, byCat, cateName, meta, lang) {
+  lang = lang || 'zh';
+  const en = lang === 'en';
   const total = ids.length;
+  // 目录页在 /box/（中文）或 /en/box/（英文），退一级都是各自的语言根
+  const toSite = en ? '../../' : '../';
+  const langRoot = en ? BASE + '/en' : BASE;
 
   let body = '';
   Object.keys(byCat).sort((a, b) => a - b).forEach((c) => {
-    const name = cateName[c] || ('分类' + c);
+    const name = en ? (CAT_EN[c] || ('Category ' + c)) : (cateName[c] || ('分类' + c));
     const links = byCat[c].map((id) =>
       '<a href="./' + encodeURIComponent(id) + '/">' + esc(id) + '</a>').join(' ');
     body += '<h2 id="c' + c + '">' + esc(name) + ' <span class="cnt">' + byCat[c].length + '</span></h2>\n' +
       '<div class="rel">' + links + '</div>\n';
   });
 
-  return '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n' +
+  const title = en
+    ? 'Packaging box template library - ' + total + ' die-cut box types online'
+    : '纸盒盒型库 - ' + total + ' 种盒型刀模图在线浏览';
+  const desc = en
+    ? total + ' packaging box die-cut templates covering tube boxes, tray boxes, rigid lid-base boxes, drawer boxes, gift boxes and corrugated cartons. Each box type includes a flat layout, adjustable parameters and structure tags. Export SVG / DXF / PDF.'
+    : '收录 ' + total + ' 种纸盒盒型刀模图，涵盖管式盒、盘式盒、天地盖、抽屉盒、礼盒、纸箱等分类，每种盒型均提供展开图、可调参数与结构标签，支持导出 SVG / DXF / PDF。';
+
+  // hreflang：目录页同样中英双向 + x-default
+  const altHtml = altLinksIndex();
+
+  const langSwitch = en
+    ? '<p class="langswitch"><a href="../../box/">中文版</a></p>\n'
+    : '<p class="langswitch"><a href="' + BASE + '/en/box/">English version</a></p>\n';
+
+  return '<!DOCTYPE html>\n<html lang="' + (en ? 'en' : 'zh-CN') + '">\n<head>\n' +
     '<meta charset="UTF-8">\n' +
     '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
-    '<title>纸盒盒型库 - ' + total + ' 种盒型刀模图在线浏览</title>\n' +
-    '<meta name="description" content="收录 ' + total + ' 种纸盒盒型刀模图，涵盖管式盒、盘式盒、天地盖、抽屉盒、礼盒、纸箱等分类，每种盒型均提供展开图、可调参数与结构标签，支持导出 SVG / DXF / PDF。">\n' +
-    '<link rel="canonical" href="' + BASE + '/box/">\n' +
-    // 本页在 /box/ 下，退一级取站点根图标
-    '<link rel="icon" href="../favicon.ico" sizes="any">\n' +
-    '<link rel="icon" href="../favicon.svg" type="image/svg+xml">\n' +
+    '<title>' + esc(title) + '</title>\n' +
+    '<meta name="description" content="' + esc(desc) + '">\n' +
+    '<meta name="keywords" content="' + esc(
+      en ? 'packaging box template, die-cut template, corrugated carton, FEFCO, box dieline'
+        : '纸盒盒型,刀模图,包装盒型,纸箱盒型') + '">\n' +
+    '<link rel="canonical" href="' + esc(langRoot + '/box/') + '">\n' +
+    altHtml +
+    '<link rel="icon" href="' + toSite + 'favicon.ico" sizes="any">\n' +
+    '<link rel="icon" href="' + toSite + 'favicon.svg" type="image/svg+xml">\n' +
     '<link rel="stylesheet" href="box.css">\n' +
+    '<meta property="og:type" content="website">\n' +
+    '<meta property="og:title" content="' + esc(title) + '">\n' +
+    '<meta property="og:description" content="' + esc(desc) + '">\n' +
+    '<meta property="og:url" content="' + esc(langRoot + '/box/') + '">\n' +
+    '<meta property="og:locale" content="' + (en ? 'en_US' : 'zh_CN') + '">\n' +
+    '<meta name="twitter:card" content="summary">\n' +
     STAT_HTML +
     '</head>\n<body>\n' +
-    '<nav class="crumb"><a href="../../index.html">纸盒刀模设计器</a> &rsaquo; <strong>盒型库</strong></nav>\n' +
-    '<h1>纸盒盒型库（' + total + ' 种）</h1>\n' +
-    '<p class="lead">按结构分类浏览全部 ' + total + ' 种盒型，点击进入可查看该盒型的刀模展开图、可调参数与结构标签。</p>\n' +
-    '<p class="cta"><a class="btn" href="../index.html">打开刀模设计器</a></p>\n' +
+    '<nav class="crumb"><a href="' + toSite + 'index.html">' +
+    (en ? 'Box die-cut designer' : '纸盒刀模设计器') + '</a> &rsaquo; <strong>' +
+    (en ? 'Box library' : '盒型库') + '</strong></nav>\n' +
+    '<h1>' + (en
+      ? 'Packaging box library (' + total + ' types)'
+      : '纸盒盒型库（' + total + ' 种）') + '</h1>\n' +
+    '<p class="lead">' + (en
+      ? 'Browse all ' + total + ' box types by structure category. Click any box type to see its die-cut layout, adjustable parameters and structure tags.'
+      : '按结构分类浏览全部 ' + total + ' 种盒型，点击进入可查看该盒型的刀模展开图、可调参数与结构标签。') +
+    '</p>\n' +
+    '<p class="cta"><a class="btn" href="' + toSite + 'index.html">' +
+    (en ? 'Open the die-cut designer' : '打开刀模设计器') + '</a></p>\n' +
     body +
+    langSwitch +
+    '</body>\n</html>\n';
+}
+
+/* ---------------- 英文站首页（/en/）----------------
+   英文流量的入口页：首屏一句话说清能干什么，再分流到分类。
+   刻意不堆关键词 —— 这一页的可读性比密度重要。 */
+function renderEnHome(ids, byCat, cateName, total) {
+  let cats = '';
+  Object.keys(byCat).sort((a, b) => a - b).forEach((c) => {
+    const name = CAT_EN[c] || ('Category ' + c);
+    cats += '<li><a href="box/#c' + c + '">' + esc(name) + '</a> ' +
+      '<span class="cnt">(' + byCat[c].length + ')</span></li>\n';
+  });
+
+  const homeUrl = BASE + '/en/';
+  const title = 'Free packaging box die-cut template generator - ' + total + ' box types';
+  const desc = 'Generate die-cut (dieline) templates for ' + total + ' packaging box types ' +
+    'online. Adjust length, width and depth, preview the flat layout and the 3D folding, ' +
+    'then export SVG, DXF, PDF or PNG. Free, no signup required.';
+
+  const altHtml =
+    '<link rel="alternate" hreflang="zh-CN" href="' + esc(BASE + '/') + '">\n' +
+    '<link rel="alternate" hreflang="en" href="' + esc(homeUrl) + '">\n' +
+    '<link rel="alternate" hreflang="x-default" href="' + esc(BASE + '/') + '">\n';
+
+  const ld = {
+    '@context': 'https://schema.org',
+    '@type': 'WebApplication',
+    name: 'Packaging box die-cut template generator',
+    url: homeUrl,
+    applicationCategory: 'DesignApplication',
+    operatingSystem: 'Web Browser',
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    description: desc
+  };
+
+  return '<!DOCTYPE html>\n<html lang="en">\n<head>\n' +
+    '<meta charset="UTF-8">\n' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
+    '<title>' + esc(title) + '</title>\n' +
+    '<meta name="description" content="' + esc(desc) + '">\n' +
+    '<meta name="keywords" content="packaging box template, die-cut template, dieline, ' +
+    'corrugated carton, FEFCO, box design">' + '\n' +
+    '<link rel="canonical" href="' + esc(homeUrl) + '">\n' +
+    altHtml +
+    // 本页在 /en/ 下，退一级取站点根图标
+    '<link rel="icon" href="../favicon.ico" sizes="any">\n' +
+    '<link rel="icon" href="../favicon.svg" type="image/svg+xml">\n' +
+    '<link rel="stylesheet" href="box/box.css">\n' +
+    '<meta property="og:type" content="website">\n' +
+    '<meta property="og:title" content="' + esc(title) + '">\n' +
+    '<meta property="og:description" content="' + esc(desc) + '">\n' +
+    '<meta property="og:url" content="' + esc(homeUrl) + '">\n' +
+    '<meta property="og:locale" content="en_US">\n' +
+    '<meta name="twitter:card" content="summary">\n' +
+    '<script type="application/ld+json">' + JSON.stringify(ld) + '</script>\n' +
+    STAT_HTML +
+    '</head>\n<body>\n' +
+    '<nav class="crumb"><strong>Box template library</strong></nav>\n' +
+    '<h1>Packaging box die-cut template generator</h1>\n' +
+    '<p class="lead">' + total + ' standard box types with real geometry. ' +
+    'Pick a box type, set length, width and depth, and get an accurate dieline ' +
+    'you can export to SVG, DXF, PDF or PNG. No signup, no paywall.</p>\n' +
+    '<p class="cta"><a class="btn" href="box/">Browse all ' + total +
+    ' box types</a></p>\n' +
+    '<h2>Categories</h2>\n<ul class="cats">\n' + cats + '</ul>\n' +
+    '<p class="langswitch"><a href="../">中文版</a></p>\n' +
+    '<footer><a href="box/">Box library</a> &middot; ' + total +
+    ' box types in total &middot; <a href="../">Box die-cut designer</a></footer>\n' +
     '</body>\n</html>\n';
 }
 
@@ -442,6 +834,43 @@ const CSS = 'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingF
   '.cnt{font-weight:400;color:#888;font-size:14px}\n' +
   'footer{margin-top:36px;padding-top:14px;border-top:1px solid #e5e7eb;font-size:13px;color:#666}\n' +
   'footer a{color:#0969da;text-decoration:none}\n' +
+  '.langswitch{margin:20px 0 0;font-size:14px}\n' +
+  '.langswitch a{color:#0969da;text-decoration:none;border:1px solid #e5e7eb;' +
+  'border-radius:5px;padding:4px 12px}\n' +
+  '.langswitch a:hover{background:#f2f4f7}\n' +
+  'ul.cats{margin:8px 0;padding-left:20px;line-height:1.9}\n' +
+  'ul.cats a{color:#0969da;text-decoration:none}\n' +
+  '.faq h3{font-size:14px;margin:18px 0 4px}\n' +
+  '.faq p{margin:0 0 6px;color:#333}\n' +
   '@media(max-width:600px){h1{font-size:20px}.fig{padding:8px}}\n';
 
-main();
+/* ---------------- 入口 ----------------
+   ⚠️ require.main 守卫必须有：main() 里第一行就 rmSync(box/)，
+   没有守卫的话任何 require('./build_box_pages.js') 都会连带删掉 box/ 重建，
+   一次 1300 文件 diff。加了这个守卫，直接执行才跑 main()。 */
+if (require.main === module) main();
+
+module.exports = {
+  main: main,
+  setBoxTotal: setBoxTotal,
+  altLinks: altLinks,
+  altLinksIndex: altLinksIndex,
+  renderPage: renderPage,
+  renderIndex: renderIndex,
+  renderEnHome: renderEnHome,
+  loadData: loadData,
+  buildGeometry: buildGeometry,
+  buildSvg: buildSvg,
+  parseCe: parseCe,
+  n1: n1,
+  esc: esc,
+  locAlt: locAlt,
+  CSS: CSS,
+  STAT_HTML: STAT_HTML,
+  ROBOTS_TXT: ROBOTS_TXT,
+  CAT_EN: CAT_EN,
+  BASE: BASE,
+  OUT_DIR: OUT_DIR,
+  EN_ROOT: EN_ROOT,
+  EN_DIR: EN_DIR
+};
