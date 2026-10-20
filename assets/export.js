@@ -87,9 +87,27 @@
 
   V2.exportName = fileBase;
 
+  // 导出事件上报：通知后端（独立 Worker /api/export-log）有人导出了刀模，
+  // 用于 KV 留痕 + 邮件通知（发送到 baoshenfei@qq.com）。失败不影响导出本身。
+  function notifyExport(type, meta) {
+    try {
+      var id = (meta && meta.id) || 'unknown';
+      var payload = JSON.stringify({ boxId: id, type: type, t: Date.now() });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon('/api/export-log', payload);
+      } else {
+        var x = new XMLHttpRequest();
+        x.open('POST', '/api/export-log', true);
+        x.setRequestHeader('Content-Type', 'application/json');
+        x.send(payload);
+      }
+    } catch (e) { /* 上报失败不影响导出 */ }
+  }
+
   /* ---------------- SVG ---------------- */
 
   V2.exportSVG = function (meta) {
+    notifyExport('svg', meta);
     var svg = standalone(meta, 0);
     var head = '<?xml version="1.0" encoding="UTF-8"?>\n' +
       '<!-- ' + (meta.name || '') + ' (' + meta.id + ') 刀模展开图 | ' +
@@ -115,6 +133,7 @@
   }
 
   V2.exportDXF = function (meta) {
+    notifyExport('dxf', meta);
     var txt = V2.buildDXF(meta);
     var blob = new Blob([txt], { type: 'application/dxf' });
     V2.download(blob, fileBase(meta) + '.dxf');
@@ -187,6 +206,7 @@
   /* ---------------- PNG ---------------- */
 
   V2.exportPNG = function (meta, opts) {
+    notifyExport('png', meta);
     opts = opts || {};
     var px = opts.px || 2400;
     var svg = '<?xml version="1.0" encoding="UTF-8"?>\n' + standalone(meta, px, opts.swPx || 2.2);
@@ -224,6 +244,7 @@
    * 因此不会被弹窗拦截。@page 尺寸设成图纸实际尺寸，打印出来就是 1:1。
    */
   V2.exportPDF = function (meta) {
+    notifyExport('pdf', meta);
     var svg = standalone(meta, 0);
     var vb = parseVB(svg);
     var w = vb.w, h = vb.h;
