@@ -86,23 +86,36 @@ async function main() {
   if (!ub.success) { console.error('✗ 部署脚本失败', up.status, JSON.stringify(ub).slice(0, 800)); process.exit(1); }
   console.log('✓ 部署脚本成功，handlers=', JSON.stringify((ub.result && ub.result.handlers) || []));
 
-  // 4) 路由（精确路径，优先于 /api/*）
+  // 4) 路由（通配路径，优先于 /api/*，且兼容带 query 的访问）
   const routes = await api(`/zones/${ZONE}/workers/routes`);
-  const PATTERN = '057300.xyz/api/export-log';
+  const PATTERN = '057300.xyz/api/export-log*';
   let routeId = null;
   if (routes.ok) {
-    const f = (routes.body.result || []).find((r) => r.pattern === PATTERN);
+    const f = (routes.body.result || []).find(
+      (r) => r.script_name === NAME || r.pattern === PATTERN || r.pattern === '057300.xyz/api/export-log'
+    );
     if (f) routeId = f.id;
   }
   if (!routeId) {
     const mk = await api(`/zones/${ZONE}/workers/routes`, {
       method: 'POST', headers: j(),
-      body: JSON.stringify({ pattern: PATTERN, script_name: NAME }),
+      body: JSON.stringify({ pattern: PATTERN, script: NAME, script_name: NAME }),
     });
     if (!mk.ok) { console.error('✗ 创建路由失败', mk.status, JSON.stringify(mk.body).slice(0, 400)); process.exit(1); }
     console.log('✓ 新建路由', PATTERN, '->', NAME);
   } else {
-    console.log('→ 路由已存在', PATTERN);
+    // 已存在：确保 pattern 是通配（PATCH 更新）
+    const cur = (routes.body.result || []).find((r) => r.id === routeId);
+    if (cur && cur.pattern !== PATTERN) {
+      const up = await api(`/zones/${ZONE}/workers/routes/${routeId}`, {
+        method: 'PUT', headers: j(),
+        body: JSON.stringify({ pattern: PATTERN, script: NAME, script_name: NAME }),
+      });
+      if (!up.ok) { console.error('✗ 更新路由失败', up.status, JSON.stringify(up.body).slice(0, 400)); process.exit(1); }
+      console.log('✓ 更新路由为通配', PATTERN);
+    } else {
+      console.log('→ 路由已存在', PATTERN);
+    }
   }
 
   console.log('\n完成。Worker 立即生效。下一步：前端 assets/export.js 加 sendBeacon 调用。');
