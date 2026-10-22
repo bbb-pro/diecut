@@ -1117,7 +1117,8 @@ button, input, select { font-family: inherit; font-size: inherit; color: inherit
   z-index: 60;
 }
 .reward-wrap:hover .reward-pop,
-.reward-wrap:focus-within .reward-pop {
+.reward-wrap:focus-within .reward-pop,
+.reward-wrap.open .reward-pop {
   opacity: 1;
   visibility: visible;
   transform: translateY(0);

@@ -1133,6 +1133,39 @@
       });
     }
 
+    /* 打赏：桌面 hover 也能弹；这里再加「点按/触屏点按」开关，移动端无 hover 也能用。
+       点外面或按 Esc 关；长按 400ms 也打开（防误触、兼容触屏长按习惯）。 */
+    var rewardWrap = document.querySelector('.reward-wrap');
+    var rewardBtn = rewardWrap && rewardWrap.querySelector('.btn-reward');
+    var rewardPop = rewardWrap && rewardWrap.querySelector('.reward-pop');
+    if (rewardWrap && rewardBtn && rewardPop) {
+      var isRewardOpen = function () { return rewardWrap.classList.contains('open'); };
+      var setRewardOpen = function (on) {
+        rewardWrap.classList.toggle('open', on);
+        rewardBtn.setAttribute('aria-expanded', on ? 'true' : 'false');
+      };
+      rewardBtn.addEventListener('click', function (e) {
+        e.stopPropagation();                 // 别让「点外面关」立刻把它关掉
+        if (lpFired) { lpFired = false; return; } // 刚长按打开，吞掉随后可能触发的 click
+        setRewardOpen(!isRewardOpen());
+      });
+      // 触屏长按也打开（长按不触发 click 时也能弹出）
+      var lpTimer = null, lpFired = false;
+      rewardBtn.addEventListener('touchstart', function () {
+        lpTimer = setTimeout(function () { lpFired = true; setRewardOpen(true); }, 400);
+      }, { passive: true });
+      var clearLp = function () { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } };
+      rewardBtn.addEventListener('touchend', clearLp);
+      rewardBtn.addEventListener('touchcancel', clearLp);
+      rewardBtn.addEventListener('contextmenu', function (e) { e.preventDefault(); }); // 长按不弹系统菜单
+      document.addEventListener('click', function (e) {
+        if (isRewardOpen() && !rewardWrap.contains(e.target)) setRewardOpen(false);
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && isRewardOpen()) { setRewardOpen(false); rewardBtn.focus(); }
+      });
+    }
+
     var btns = document.querySelectorAll('.exp-btn');
     if (!btns.length) return;
     Array.prototype.forEach.call(btns, function (btn) {

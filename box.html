@@ -8,7 +8,7 @@
 <meta name="robots" content="noindex">
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/style.css?v=a37b2b0d58">
+<link rel="stylesheet" href="assets/style.css?v=b73b0f83b2">
 <style>
   .sug-box {
     position: absolute; top: calc(100% + 6px); left: 0; right: 0;
@@ -46,10 +46,10 @@ s.parentNode.insertBefore(hm, s);
     <div class="sug-box" id="qbox"></div>
   </div>
   <div class="topbar-right">
-    <!-- 打赏：hover 弹出收款二维码（在导出下载按钮前） -->
+    <!-- 打赏：hover 或 点按/触屏点按 弹出收款二维码（在导出下载按钮前） -->
     <div class="reward-wrap">
-      <button class="btn btn-sm btn-reward" type="button" title="如果 Packmage 帮到了你，欢迎打赏支持">打赏</button>
-      <div class="reward-pop" role="tooltip">
+      <button class="btn btn-sm btn-reward" type="button" id="rewardBtn" aria-controls="rewardPop" aria-expanded="false" title="如果 Packmage 帮到了你，欢迎打赏支持">打赏</button>
+      <div class="reward-pop" id="rewardPop" role="tooltip">
         <img src="assets/reward.png" alt="打赏收款二维码">
         <span class="reward-tip">扫码打赏 · 感谢支持 Packmage</span>
       </div>
@@ -322,9 +322,9 @@ s.parentNode.insertBefore(hm, s);
   <div class="related-row" id="relatedRow"></div>
 </div>
 
-<script src="assets/common.js?v=a37b2b0d58"></script>
-<script src="assets/export.js?v=a37b2b0d58"></script>
-<script src="assets/detail.js?v=a37b2b0d58"></script>
+<script src="assets/common.js?v=b73b0f83b2"></script>
+<script src="assets/export.js?v=b73b0f83b2"></script>
+<script src="assets/detail.js?v=b73b0f83b2"></script>
 <script>
 /* 顶栏 EN 入口：按 URL 上的盒型编号拼出对应的英文静态页地址。
    box.html 本身是 noindex 的工具页，英文 SEO 靠的是 /en/box/<ID>/ 那一套。 */
