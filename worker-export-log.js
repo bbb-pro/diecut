@@ -64,7 +64,7 @@ export default {
         const mailPromise = env.MAILCHANNELS.send({
           from: FROM_EMAIL,
           to: TARGET_EMAIL,
-          subject: `[Packmage] 刀模导出通知 · ${boxId} · ${type}`,
+          subject: `刀模导出通知 · ${boxId} · ${type}`,
           text:
             `有人导出了刀模文件。\n` +
             `盒型: ${boxId}\n` +

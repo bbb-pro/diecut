@@ -181,7 +181,7 @@
   var hvFor = null, hvShowT = null, hvHideT = null;
 
   /* 立体盒预览：用 280×208 缩略图
-     三级兜底  本地 data/thumbs/ → 回源 online.packmage.cn → 离线矢量示意（极少走到） */
+     三级兜底  本地 data/thumbs/ → 回源上游图床 → 离线矢量示意（极少走到） */
   var THUMB_LOCAL = 'data/thumbs/';
   var THUMB_REMOTE = 'https://online.packmage.cn/Content/boximg/';
   var hvLoaded = {};
