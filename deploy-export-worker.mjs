@@ -8,6 +8,7 @@
  *   2) 查找或创建 KV namespace 'diecut-export-log'
  *   3) PUT 脚本（worker-export-log.js）并携带 KV + send_email 两个绑定
  *   4) 查找或创建精确路由 057300.xyz/api/export-log -> diecut-export-log
+ *   5) 配置 Cron 定时触发器（UTC 00:00 = 北京时间 08:00 发日报）
  */
 
 import fs from 'node:fs';
@@ -26,6 +27,8 @@ const ACC = env.CF_ACCOUNT_ID || 'cba5e4540ec02cc4b90f7ea0d8077e57';
 const ZONE = env.CF_ZONE_ID || '48fe0dc25465336fa22755d34f10698c';
 const NAME = 'diecut-export-log';
 const TARGET = 'baoshenfei@qq.com';
+// 每日日报 Cron：UTC 00:00 = 北京时间 08:00
+const CRON = '0 0 * * *';
 const BASE = 'https://api.cloudflare.com/client/v4';
 const H = { Authorization: 'Bearer ' + TOKEN };
 
@@ -65,9 +68,16 @@ async function main() {
 
   // 3) PUT 脚本 + 绑定
   const code = fs.readFileSync(path.join(process.cwd(), 'worker-export-log.js'), 'utf8');
+  // 手动补发日报用的 token（secret_text 绑定，Worker 侧只读不回显）
+  let reportToken = env.CF_REPORT_TOKEN;
+  if (!reportToken) {
+    reportToken = crypto.randomUUID().replace(/-/g, '');
+    console.log('→ 未配置 CF_REPORT_TOKEN，本次自动生成:', reportToken);
+  }
   const bindings = [
     { type: 'kv_namespace', name: 'EXPORT_LOG', namespace_id: nsId },
     { type: 'send_email', name: 'MAILCHANNELS', destination_address: TARGET },
+    { type: 'secret_text', name: 'REPORT_TOKEN', text: reportToken },
   ];
   const metadata = {
     main_module: 'worker-export-log.js',
@@ -118,7 +128,23 @@ async function main() {
     }
   }
 
-  console.log('\n完成。Worker 立即生效。下一步：前端 assets/export.js 加 sendBeacon 调用。');
+  // 5) Cron 定时触发器（每日北京时间 08:00 发日报）
+  const cur = await api(`/accounts/${ACC}/workers/scripts/${NAME}/schedules`);
+  const curCron = cur.ok && cur.body.result && cur.body.result.schedules && cur.body.result.schedules[0]
+    ? cur.body.result.schedules[0].cron : null;
+  if (curCron === CRON) {
+    console.log('→ Cron 已配置', CRON);
+  } else {
+    const set = await api(`/accounts/${ACC}/workers/scripts/${NAME}/schedules`, {
+      method: 'PUT', headers: j(),
+      // 该端点 body 是裸数组（不是 {schedules:[...]}）
+      body: JSON.stringify([{ cron: CRON }]),
+    });
+    if (!set.ok) { console.error('✗ 配置 Cron 失败', set.status, JSON.stringify(set.body).slice(0, 400)); process.exit(1); }
+    console.log('✓ 配置 Cron', CRON, '(UTC) = 北京时间 08:00');
+  }
+
+  console.log('\n完成。Worker 立即生效。Cron 定时器已配置，每日北京时间 08:00 自动发日报。');
 }
 
 main().catch((e) => { console.error('FATAL', e); process.exit(1); });

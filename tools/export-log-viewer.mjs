@@ -7,6 +7,9 @@
  *   node tools/export-log-viewer.mjs            # 累计数 + 最近 20 条
  *   node tools/export-log-viewer.mjs 50         # 累计数 + 最近 50 条
  *   node tools/export-log-viewer.mjs all        # 列出全部（最多 1000 条）
+ *   node tools/export-log-viewer.mjs daily      # 昨日日报（北京时间口径，预览不发信）
+ *   node tools/export-log-viewer.mjs daily 2026-10-23   # 指定日期的日报
+ *   node tools/export-log-viewer.mjs send [日期]          # 补发日报邮件（需 CF_REPORT_TOKEN）
  *
  * 输出：
  *   - 累计导出总数（来自 KV 'count' 键）
@@ -59,6 +62,40 @@ async function listKeys() {
 }
 
 async function main() {
+  const mode = process.argv[2];
+
+  // 日报模式：daily [日期] 预览 / send [日期] 补发
+  if (mode === 'daily' || mode === 'send') {
+    const arg = process.argv[3];
+    const isSend = mode === 'send';
+    const q = new URLSearchParams();
+    if (arg) q.set('date', arg);
+    if (isSend) {
+      const token = env.CF_REPORT_TOKEN;
+      if (!token) {
+        console.error('✗ 未配置 CF_REPORT_TOKEN（~/.workbuddy/cf-worker-deploy.env），无法补发');
+        process.exit(1);
+      }
+      q.set('daily-send', '1');
+      q.set('token', token);
+    } else {
+      q.set('daily', '1');
+    }
+    const r = await fetch(`https://057300.xyz/api/export-log?${q.toString()}`);
+    const text = await r.text();
+    if (r.status !== 200) {
+      console.error('✗ 请求失败', r.status, text.slice(0, 300));
+      process.exit(1);
+    }
+    if (isSend) {
+      console.log('✓ 已触发补发');
+      console.log(text);
+    } else {
+      console.log(text);
+    }
+    return;
+  }
+
   const limit = getLimit();
 
   // 1) 累计总数
