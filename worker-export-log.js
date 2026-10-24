@@ -5,9 +5,10 @@
  * 不动原 worker.js / 不影响 /api/* -> diecut-api。
  *
  * 功能：
- *   A) 实时通知（前端 assets/export.js 每次导出 navigator.sendBeacon）
- *      1) 写入 KV（diecut-export-log）留痕：每条导出事件一条记录 + 累计计数
- *      2) 通过 Mailchannels(send_email 绑定) 发邮件通知到站长邮箱
+ *   A) 导出事件留痕（前端 assets/export.js 每次导出 navigator.sendBeacon）
+ *      写入 KV（diecut-export-log）：每条导出事件一条记录 + 累计计数
+ *      ⚠️ 2026-10-25 起**不再每次导出都发邮件**，只保留下面的每日汇总日报。
+ *         留痕是日报的数据源，任何时候都不能关。
  *
  *   B) 每日日报（Cloudflare Cron 定时触发，UTC 00:00 = 北京时间 08:00）
  *      统计「前一天」的导出数据并汇总成日报邮件发到站长邮箱：
@@ -18,6 +19,11 @@
 
 const TARGET_EMAIL = 'baoshenfei@qq.com';
 const FROM_EMAIL = 'noreply@057300.xyz';
+
+// 是否每次导出都发实时邮件。
+// 2026-10-25 起改为「只发每日汇总日报」——每次导出都发会被几十封邮件淹没。
+// 改成 true 可临时恢复实时通知（数据仍照常写 KV，日报不受影响）。
+const REALTIME_MAIL = false;
 
 // 日报统计口径用的时区偏移（北京时间 UTC+8）
 const TZ_OFFSET_MIN = 8 * 60;
@@ -326,29 +332,32 @@ export default {
       console.error('KV write failed:', e.message);
     }
 
-    // 2) 邮件通知（后台异步发送，失败只记日志，不影响记录与响应）
-    try {
-      if (env.MAILCHANNELS) {
-        const mailPromise = env.MAILCHANNELS.send({
-          from: FROM_EMAIL,
-          to: TARGET_EMAIL,
-          subject: `刀模导出通知 · ${boxId} · ${type}`,
-          text:
-            `有人导出了刀模文件。\n` +
-            `盒型: ${boxId}\n` +
-            `格式: ${type}\n` +
-            `时间: ${when}\n` +
-            `IP:   ${ip}\n` +
-            `UA:   ${ua}\n`,
-        });
-        if (ctx && typeof ctx.waitUntil === 'function') {
-          ctx.waitUntil(mailPromise.catch((e) => console.error('Email failed:', (e && e.message) || e)));
-        } else {
-          await mailPromise.catch((e) => console.error('Email failed:', (e && e.message) || e));
+    // 2) 实时邮件通知 —— **默认关闭**（2026-10-25 起改为只发每日汇总日报）
+    //    留这段代码是为了偶尔需要「谁导出了」即时知道时，改 REALTIME_MAIL = true 即可。
+    if (REALTIME_MAIL) {
+      try {
+        if (env.MAILCHANNELS) {
+          const mailPromise = env.MAILCHANNELS.send({
+            from: FROM_EMAIL,
+            to: TARGET_EMAIL,
+            subject: `刀模导出通知 · ${boxId} · ${type}`,
+            text:
+              `有人导出了刀模文件。\n` +
+              `盒型: ${boxId}\n` +
+              `格式: ${type}\n` +
+              `时间: ${when}\n` +
+              `IP:   ${ip}\n` +
+              `UA:   ${ua}\n`,
+          });
+          if (ctx && typeof ctx.waitUntil === 'function') {
+            ctx.waitUntil(mailPromise.catch((e) => console.error('Email failed:', (e && e.message) || e)));
+          } else {
+            await mailPromise.catch((e) => console.error('Email failed:', (e && e.message) || e));
+          }
         }
+      } catch (e) {
+        console.error('Email setup failed:', (e && e.message) || e);
       }
-    } catch (e) {
-      console.error('Email setup failed:', (e && e.message) || e);
     }
 
     return new Response('ok', { status: 200, headers: CORS });
