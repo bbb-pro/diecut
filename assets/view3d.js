@@ -306,7 +306,9 @@ function readThickPref() {
    折叠是刚体变换，同一顶点的 UV 不变 → 贴图等于「印在同一张纸上」，
    折起来纹理跟着面板走，不会在折痕处撕开错位。 */
 const TEX_MM = 160;         // 一张贴图代表 160mm 见方的纸面
-const MAT_BASE = 'assets/mat/';
+/* 材质贴图按「本模块自身的 URL」定位：英文工具页在 /en/box.html，
+   写成相对 'assets/mat/' 会解析到 /en/assets/mat/ → 404。 */
+const MAT_BASE = new URL('./mat/', import.meta.url).href;
 const PAPERS = [
   { k: 'plain', name: '纸板原色' },
   { k: 'wa',    name: '瓦楞纸', file: 'paper_wa_A.jpg' },

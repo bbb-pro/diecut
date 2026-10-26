@@ -55,7 +55,10 @@
   /* ==================== 启动 ==================== */
 
   function boot() {
-    document.title = V2.displayName(B) + '（' + ID + '）刀模展开图 · 内/制造/外尺寸对照与 SVG·DXF 下载 - 通用包装盒型库';
+    /* 英文工具页（/en/box.html）的标题要英文：盒型名本身是中文，这里只放编号 */
+    document.title = (V2.isEn && V2.isEn())
+      ? 'Box ' + ID + ' die-cut layout · inner / manufacturing / outer sizes, SVG · DXF · PDF export'
+      : V2.displayName(B) + '（' + ID + '）刀模展开图 · 内/制造/外尺寸对照与 SVG·DXF 下载 - 通用包装盒型库';
 
     ceLive = Object.assign({}, G.ce);
     dims.L = numOr(G.ce.l);

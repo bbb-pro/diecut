@@ -27,8 +27,8 @@
       dimType: meta.dimType,
       unit: meta.unit || 'mm',
       fs: fs,
-      nameW: '展开宽',
-      nameH: '展开高',
+      nameW: (V2.isEn && V2.isEn()) ? 'BLANK W' : '展开宽',
+      nameH: (V2.isEn && V2.isEn()) ? 'BLANK H' : '展开高',
       pad: fs * 0.9,
       sw: V2.SW_MM,
       dash: V2.SW_MM.dash
@@ -249,7 +249,12 @@
     var vb = parseVB(svg);
     var w = vb.w, h = vb.h;
 
-    var html = '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">' +
+    var tipHtml = (V2.isEn && V2.isEn())
+      ? 'When printing, set <b>Scale</b> to <b>100% (actual size)</b>, pick a <b>custom paper size matching the drawing</b> and choose <b>Save as PDF</b> as the target. The drawing measures ' + w.toFixed(1) + ' × ' + h.toFixed(1) + ' mm.'
+      : '打印时把「缩放」设为 <b>100%（实际大小）</b>，纸张选「自定义 / 与图纸同尺寸」，' +
+        '目标选 <b>另存为 PDF</b>。图纸实际尺寸 ' + w.toFixed(1) + ' × ' + h.toFixed(1) + ' mm。';
+
+    var html = '<!doctype html><html lang="' + (V2.LANG === 'en' ? 'en' : 'zh-CN') + '"><head><meta charset="utf-8">' +
       '<title>' + V2.esc((meta.name || '') + ' ' + meta.id) + '</title><style>' +
       '@page{size:' + w.toFixed(1) + 'mm ' + h.toFixed(1) + 'mm;margin:0}' +
       'html,body{margin:0;padding:0;background:#fff}' +
@@ -259,8 +264,7 @@
       'border-top:1px solid #e3e7ec}' +
       '@media print{#tip{display:none}}' +
       '</style></head><body>' + svg +
-      '<div id="tip">打印时把「缩放」设为 <b>100%（实际大小）</b>，纸张选「自定义 / 与图纸同尺寸」，' +
-      '目标选 <b>另存为 PDF</b>。图纸实际尺寸 ' + w.toFixed(1) + ' × ' + h.toFixed(1) + ' mm。</div>' +
+      '<div id="tip">' + tipHtml + '</div>' +
       '</body></html>';
 
     var fr = document.createElement('iframe');

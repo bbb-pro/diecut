@@ -9,7 +9,15 @@
   /* ---------------- 数据加载 ---------------- */
 
   var _loaded = {};
-  var BASE = 'data/';
+  /* 数据目录按「本脚本自身的位置」推导，而不是写死 'data/'：
+     英文工具页在 /en/box.html，相对写法会去找 /en/data/ → 404。
+     assets/common.js → 站点根 + data/（绝对 URL，任何层级都成立）。 */
+  var BASE = (function () {
+    var s = document.currentScript || document.querySelector('script[src*="common.js"]');
+    var src = s && s.src ? String(s.src).replace(/[?#].*$/, '') : '';
+    if (!src) return 'data/';
+    return src.replace(/assets\/[^\/]*$/, '') + 'data/';
+  })();
 
   /* 资源缓存版本串（cache-busting），值由 tools/bump-assets.mjs 按源码内容算出，
      写在 HTML 的 <script src="assets/common.js?v=xxx"> 上。

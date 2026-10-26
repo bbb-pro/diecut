@@ -351,6 +351,39 @@ function syncIndexCounts(total, cateCount) {
 
 /* ---------------- 主流程 ---------------- */
 
+/* ---------------- 英文工具页：从 box.html 派生 ---------------- */
+/* /en/box.html 不另写一套界面，直接从中文 box.html 派生，只改五类东西：
+   资源路径 / 语言标记 / 标题描述 / 站内导航 / 语言入口。
+   这样以后改中文工具页，英文版自动跟上，不会出现两份 UI 漂移。
+   （en/ 目录每月被 CI 整棵重建，所以必须由生成器写出，不能手工放进去。） */
+function buildEnBoxTool() {
+  let html = fs.readFileSync(path.join(ROOT, 'box.html'), 'utf8');
+
+  /* 1) 资源路径：en/ 比站点根多一层 */
+  html = html.replace(/(href|src)="assets\//g, '$1="../assets/');
+  html = html.replace(/(href|src)="favicon\./g, '$1="../favicon.');
+
+  /* 2) 语言标记：i18n.js 靠它决定是否翻译 */
+  html = html.replace('<html lang="zh-CN">', '<html lang="en">');
+
+  /* 3) 标题 / 描述（工具页是 noindex，但社交分享与浏览器标签仍要用英文） */
+  html = html.replace(/<title>[\s\S]*?<\/title>/,
+    '<title>Box template designer · Universal Box Template Library</title>');
+  html = html.replace(/<meta name="description" content="[^"]*">/,
+    '<meta name="description" content="Interactive die-cut designer: adjust length, width and depth, recalculate the die line in real time, preview it in 3D and export SVG / DXF / PDF / PNG at 1:1 actual size.">');
+
+  /* 4) 站内导航：品牌 / 返回 / 面包屑都指向英文盒型库，而不是中文首页 */
+  html = html.replace(/href="index\.html"/g, 'href="box/"');
+
+  /* 5) 语言入口兜底（JS 会再算一次，这里防 JS 失效） */
+  html = html.replace(
+    'id="langEn" href="en/" title="Switch to the English version">English',
+    'id="langEn" href="../box.html" title="Switch to Chinese">中文');
+
+  fs.writeFileSync(path.join(EN_ROOT, 'box.html'), html);
+  return true;
+}
+
 function main() {
   const { data, cates, restBoxes } = loadData();
   const boxes = data.boxes;
@@ -437,6 +470,9 @@ function main() {
 
   // 英文站入口页 /en/
   fs.writeFileSync(path.join(EN_ROOT, 'index.html'), renderEnHome(ids, byCat, cateName, ids.length));
+
+  // 英文设计器 /en/box.html（从 box.html 派生，界面与逻辑共用一套）
+  buildEnBoxTool();
 
   // sitemap：中英成对，条目里直接带 hreflang 互指
   const urls = [];
@@ -629,7 +665,7 @@ function renderPage(o, lang) {
     '<p class="cap">' + esc(en ? cp.cap : ('图：' + id + ' 刀模展开图 — 实线为切割线，虚线为压痕线')) +
     '</p></div>\n' +
 
-    '<p class="cta"><a class="btn" href="' + toSite + 'index.html?box=' +
+    '<p class="cta"><a class="btn" href="' + toSite + (en ? 'en/box.html?id=' : 'index.html?box=') +
     encodeURIComponent(id) + '">' +
     (en ? ('Open ' + esc(id) + ' in the designer') : ('在设计器中打开 ' + esc(id))) +
     '</a></p>\n' +
@@ -873,6 +909,7 @@ module.exports = {
   renderPage: renderPage,
   renderIndex: renderIndex,
   renderEnHome: renderEnHome,
+  buildEnBoxTool: buildEnBoxTool,
   loadData: loadData,
   buildGeometry: buildGeometry,
   buildSvg: buildSvg,
