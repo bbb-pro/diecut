@@ -117,7 +117,7 @@
     return '<a class="card" href="box.html?id=' + encodeURIComponent(b.id) + '">' +
       '<div class="thumb" data-box="' + V2.esc(b.id) + '">' + skeletonSvg() + '</div>' +
       '<div class="card-body">' +
-      '<div class="card-title' + (ph ? ' is-id' : '') + '" title="' + V2.esc(b.id + ' · ' + (V2.typeName(b) || '未命名')) + '">' + V2.esc(dn) + '</div>' +
+      '<div class="card-title' + (ph ? ' is-id' : '') + '" title="' + V2.esc(b.id + ' · ' + (V2.typeName(b) || V2.catLabel(b) || '未命名')) + '">' + V2.esc(dn) + '</div>' +
       (ph ? '' : '<div class="card-id">' + V2.esc(b.id) + '</div>') +
       '<div class="card-dims">' +
       (b.L && b.W && b.D

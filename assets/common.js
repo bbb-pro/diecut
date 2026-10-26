@@ -646,11 +646,32 @@
     return null;
   };
 
-  /** 卡片 / 标题用：拿不到真类型名就回编号 */
-  V2.displayName = function (b) { return V2.typeName(b) || String((b || {}).id || ''); };
+  /** 分类名兜底：真类型名拿不到时（166 个盒型的 name 全是 SEO 关键词），
+      用盒型所属分类当显示名，避免卡片只剩一串编号。目录页与详情页都会先
+      loadCatalog，所以 V2_CATALOG.cats 基本可用；拿不到再退到 CAT_FIX。 */
+  V2.catLabel = function (b) {
+    b = b || {};
+    var cats = (window.V2_CATALOG && window.V2_CATALOG.cats) || null;
+    var idxs = (b.cats && b.cats.length) ? b.cats : (b.cat == null ? [] : [b.cat]);
+    for (var i = 0; i < idxs.length; i++) {
+      var nm = String(V2.catName(cats, idxs[i]) || '')
+        .replace(/^[A-Za-z]{1,3}\.\s*/, '')   /* 去掉「A.」「JP.」这类排序前缀 */
+        .trim();
+      if (!nm || nm === '免费' || nm === '其他' || /^未/.test(nm)) continue;
+      if (nm.length > 12) continue;
+      return nm;
+    }
+    return '';
+  };
 
-  /** 名字是否为占位名（卡片据此隐藏第二行重复的编号） */
-  V2.nameIsPlaceholder = function (b) { return V2.typeName(b) == null; };
+  /** 卡片 / 标题用：真类型名 → 分类名 → 编号，三级兜底 */
+  V2.displayName = function (b) {
+    return V2.typeName(b) || V2.catLabel(b) || String((b || {}).id || '');
+  };
+
+  /** 名字是否为占位名（卡片据此隐藏第二行重复的编号）
+      只有「连分类兜底都拿不到、只能显示编号」时才算占位，此时第二行编号才是重复的 */
+  V2.nameIsPlaceholder = function (b) { return !V2.typeName(b) && !V2.catLabel(b); };
 
   /* ---------------- 等轴测立体盒（列表页 hover 预览用） ---------------- */
 
