@@ -1008,7 +1008,8 @@
     var rest = (G.p || []).filter(function (p) { return main.indexOf(p.n) < 0; });
     $('otherParams').innerHTML = rest.length
       ? rest.map(paramHtml).join('')
-      : '<div style="font-size:12.5px;color:var(--muted)">该盒型无额外参数</div>';
+      : '<div style="font-size:12.5px;color:var(--muted)">' +
+        (V2.isEn && V2.isEn() ? 'No extra parameters for this box type' : '该盒型无额外参数') + '</div>';
 
     document.querySelectorAll('.param input, .param select').forEach(function (inp) {
       var ev = inp.tagName === 'SELECT' ? 'change' : 'input';
@@ -1030,14 +1031,18 @@
        若没有中文名（label 退化成代码本身），就不重复显示。 */
     var code = String(p.n == null ? '' : p.n);
     var labels = (C && C.labels) || {};
-    var label = p.d || labels[p.n] || code;
+    /* 英文页：参数名走 V2.paramLabel（行业术语，缺词回中文，不编造）；
+       上游偶尔给 "/" 或 "." 这种脏名字 —— 这时直接拿参数代码当名字，避免出现一个孤零零的斜杠。 */
+    var label = V2.paramLabel(p.d || labels[p.n] || code);
+    if (/^[.\/\\\-_\s·]+$/.test(label)) label = code;
     var n = V2.esc(p.n);
     var body;
     if (p.dl && p.dl.length) {
       /* dl: [{v: 传回后端的值, t: 显示文案}]，如 [{v:'1',t:'暗扣'},{v:'2',t:'锁扣'}] */
       body = '<select data-n="' + n + '">' + p.dl.map(function (o) {
         return '<option value="' + V2.esc(o.v) + '"'
-          + (String(o.v) === String(p.v) ? ' selected' : '') + '>' + V2.esc(o.t) + '</option>';
+          + (String(o.v) === String(p.v) ? ' selected' : '') + '>' +
+          V2.esc(V2.optLabel(o.t)) + '</option>';
       }).join('') + '</select>';
     } else {
       body = '<input type="number" step="any" data-n="' + n + '" value="' + V2.esc(p.v) + '">';

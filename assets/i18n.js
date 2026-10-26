@@ -76,6 +76,8 @@
       'Folds this die-cut layout into a 3D box in real time. After you change the size it re-folds automatically.',
     '适应': 'Fit',
     '主尺寸': 'Main dims',
+    /* 三围单字：尺寸框的提示句（「与宽相同，改宽就会跟着变」）靠 DICT 反查这几个字 */
+    '长': 'Length', '宽': 'Width', '高': 'Height',
     '显示主尺寸标注：长 / 宽 / 高这类主参数的尺寸线（橙色）': 'Show main dimension lines — length / width / depth (orange)',
     '显示其他参数标注：圆角、插舌、锁扣等结构参数的尺寸线（绿色）': 'Show other dimensions — radii, tuck flaps, locks (green)',
     '标注文字怎么显示': 'How annotation text is displayed',
@@ -330,6 +332,12 @@
     [/^打印失败：(.+)$/, 'Printing failed: {1}'],
     [/^刀模图 XML 非法：(.+)$/, 'Invalid die-cut XML: {1}'],
     [/^打印时把「缩放」设为 100%（实际大小）/, 'When printing, set Scale to 100% (actual size)'],
+    /* 底部统计 / 状态行（都是 JS 拼字符串，textContent 设进去，只能靠模式兜） */
+    [/^(\d+) 条$/, '{1} lines'],
+    [/^主尺寸 (\d+)\/(\d+) · 其他参数 (\d+)\/(\d+)$/, 'Main dims {1}/{2} · Other params {3}/{4}'],
+    [/^该盒型无标注数据$/, 'No dimension annotations for this box type'],
+    [/^（(\d+) 段折叠）$/, '({1} fold steps)'],
+    [/^按当前尺寸重算$/, 'from current size'],
     /* 兜底：参数标签带序号的写法（「长 1」「偏移 2」）——译基础词、保留序号 */
     [/^(.+?)\s+(\d+)$/, function (m) { return (DICT[m[1]] || m[1]) + ' ' + m[2]; }]
   ];
@@ -344,6 +352,228 @@
     }
     return null;
   }
+
+  /* ---------------- 「其他参数」面板：上游中文参数名 → 英文 ----------------
+     上游 pm[].d 是中文参数名（「插舌长」「围边面纸长1」这类），随盒型变化、量很大，
+     既有 catalog 标签表（407 码 / 205 个名字）又有盒型专属名，所以单靠一张整词表会漏。
+     策略三层：
+       ① 整词命中 PARAM_EN（已覆盖 54 个盒型抽样里出现的全部 162 个名字 + catalog 词表）
+       ② 「基础词 + 结尾编号」组合：长1 → Length 1、围边面纸宽2 → Wall cover paper width 2
+       ③ 都没命中 → 原样回中文（用户 2026-10-27 明确：没有准确英文就用中文，不许瞎编）
+     术语按刀模/折叠纸盒行业标准：die line、crease、glue flap、tuck flap、dust flap、
+     slot、lock、greyboard、cover paper、lining paper、wrap、square(lip)。 */
+  var PARAM_EN = {
+    /* —— 主尺寸与三围 —— */
+    '长': 'Length', '长度': 'Length', '宽': 'Width', '宽度': 'Width',
+    '高': 'Height', '深': 'Depth',
+    '外尺寸长': 'Outer length', '外尺寸宽': 'Outer width', '外尺寸高': 'Outer height',
+    '内长': 'Inner length', '内宽': 'Inner width', '内高': 'Inner height', '外高': 'Overall outer height',
+    '整长': 'Overall length', '顶宽': 'Top width', '侧边长': 'Side edge length',
+    '斜线高': 'Diagonal height', '背板高': 'Back panel height', '高低位': 'Height offset',
+    '左边高度': 'Left height', '右边高度': 'Right height',
+    '长缩位': 'Length allowance', '宽缩位': 'Width allowance', '高缩位': 'Height allowance',
+    '向内补偿': 'Inner compensation', '向外补偿': 'Outer compensation', '伸长': 'Extension',
+    '松紧度间隙': 'Fit clearance', '内外盒边距': 'Lid/base clearance', '盒距': 'Box spacing',
+    /* —— 长度/宽度/半径/角度这类通用量 —— */
+    '半径': 'Radius', '角度': 'Angle', '直径': 'Diameter', '距离': 'Distance', '偏移': 'Offset',
+    '间距': 'Spacing', '间隔': 'Spacing', '横向间隔': 'Horizontal spacing', '竖向间隔': 'Vertical spacing',
+    '槽深': 'Slot depth', '槽口坡度': 'Slot taper', '槽口半径': 'Slot radius',
+    '槽口宽度': 'Slot width', '槽口数': 'Slot count', '狭缝宽': 'Slit width',
+    '边缘倒角': 'Edge chamfer', '导圆角': 'Fillet radius', '圆角、直角': 'Corner style',
+    /* —— 插舌 / 防尘翼 / 黏位 —— */
+    '插舌': 'Tuck flap', '插舌长': 'Tuck flap length', '插舌宽': 'Tuck flap width',
+    '插舌角度': 'Tuck flap angle', '插舌半径': 'Tuck flap radius', '插舌结构': 'Tuck structure',
+    '插舌孔长': 'Tuck slot length', '插舌孔宽': 'Tuck slot width',
+    '上插舌样式': 'Top tuck style', '下插舌样式': 'Bottom tuck style',
+    '防尘翼长': 'Dust flap length', '防尘摇翼长': 'Dust flap length',
+    '防尘摇翼高度': 'Dust flap height', '防尘摇翼半径': 'Dust flap radius',
+    '防尘摇翼角度': 'Dust flap angle',
+    '黏位长': 'Glue flap length', '黏位角度': 'Glue flap angle',
+    '粘位': 'Glue flap', '粘位长': 'Glue flap length',
+    '折边': 'Fold', '折边长': 'Fold length', '折边宽': 'Fold width', '折边宽度': 'Fold width',
+    '折位长': 'Fold position length',
+    '内折': 'Inner fold', '内折长': 'Inner fold length', '内折宽度': 'Inner fold width',
+    '内折卡口': 'Inner fold notch',
+    '插片长': 'Insert tab length', '挂板长': 'Hanging panel length',
+    '手提长': 'Handle length', '手提扣孔': 'Carry handle hole',
+    /* —— 锁扣 / 插孔 / 开窗 / 提孔 —— */
+    '锁扣': 'Lock', '锁扣宽': 'Lock width', '锁扣深': 'Lock depth', '锁扣半径': 'Lock radius',
+    '锁扣长度': 'Lock length', '锁长': 'Lock length', '锁扣间隔': 'Lock spacing',
+    '锁扣孔长': 'Lock slot length', '锁扣孔宽': 'Lock slot width', '锁扣孔半径': 'Lock slot radius',
+    '自锁长': 'Self-lock length', '后锁间隔': 'Rear lock spacing',
+    '插孔长': 'Slot length', '插孔宽': 'Slot width', '插孔数': 'Slot count',
+    '上下插孔数': 'Vertical slot count',
+    '左右插孔数': 'Side slot count', '上部插扣数': 'Top lock count', '底部插扣数': 'Bottom lock count',
+    '上下插孔长': 'Vertical slot length', '上下插孔宽': 'Vertical slot width',
+    '上下孔心间距': 'Vertical slot spacing', '左右距离': 'Left/right clearance',
+    '孔长': 'Hole length', '孔长度': 'Hole length', '孔宽': 'Hole width', '孔直径': 'Hole diameter',
+    '孔心间距': 'Hole spacing', '孔底距': 'Hole-to-bottom distance',
+    '侧面孔底距': 'Side hole-to-bottom distance',
+    '提孔长度': 'Handle hole length', '提孔宽度': 'Handle hole width', '穿绳孔': 'String hole',
+    '开窗': 'Window', '开窗长度': 'Window length', '开窗宽度': 'Window width',
+    '开孔长': 'Opening length', '开孔宽': 'Opening width', '开孔半径': 'Opening radius',
+    '开孔尺寸': 'Opening size',
+    '前面圆弧数': 'Front arc count', '后面圆弧数': 'Rear arc count',
+    '卡位宽': 'Retaining slot width', '卷边位': 'Rolled edge',
+    /* —— 折叠纸盒结构位（勾底 / 自动底）—— */
+    '勾底半径': 'Auto-bottom radius',
+    '正唛勾底角度': 'Front panel auto-bottom angle', '侧唛勾底角度': 'Side panel auto-bottom angle',
+    '过刀长': 'Over-cut length', '单双刀': 'Single/double cut', '齿刀模型': 'Perforation pattern',
+    '球牌': 'Disc',
+    /* —— 盒盖 / 地盒 / 天盖 / 内盒 —— */
+    '盒盖': 'Lid', '盖长': 'Lid length', '盖宽': 'Lid width', '盖高': 'Lid height',
+    '盒盖长': 'Lid length', '盒盖宽': 'Lid width', '盒盖高': 'Lid height', '盒盖深': 'Lid depth',
+    '盖盒高': 'Lid height', '上盖面长': 'Top lid face length', '盒盖包边': 'Lid wrap',
+    '盖盒包边': 'Lid wrap', '上盖包边': 'Top lid wrap', '天盖包边': 'Top lid wrap',
+    '盖内折': 'Lid inner fold', '盖盒内折': 'Lid inner fold',
+    '盖内裱长': 'Lid inner lining length', '盖内裱宽': 'Lid inner lining width',
+    '盖盒内裱纸厚度': 'Lid inner lining thickness', '天盖裱面厚度': 'Top lid lining thickness',
+    '盖面纸长': 'Lid cover paper length', '盖面纸宽': 'Lid cover paper width',
+    '盖面纸高': 'Lid cover paper height', '盖面纸厚度': 'Lid cover paper thickness',
+    '盖脊宽': 'Lid spine width',
+    '地盒长': 'Base length', '地盒宽': 'Base width', '地盒高': 'Base height',
+    '盒底长': 'Base bottom length', '盒底宽': 'Base bottom width',
+    '底长': 'Bottom length', '底宽': 'Bottom width', '底高': 'Bottom height',
+    '盒底内折宽度': 'Base inner fold width', '盒内折': 'Base inner fold',
+    '地盒包边': 'Base wrap', '下盒包边': 'Base wrap', '内盒包底': 'Inner box bottom wrap',
+    '地盖包边': 'Bottom lid wrap', '底盖包边': 'Bottom lid wrap',
+    '地盒内裱纸厚度': 'Base inner lining thickness', '地盒裱面厚度': 'Base lining thickness',
+    '地盒面纸厚度': 'Base cover paper thickness', '内裱纸厚度': 'Inner lining thickness',
+    '盒脊宽': 'Base spine width', '边脊宽': 'Spine width', '边脊宽度': 'Spine width',
+    '皮壳边脊宽': 'Case spine width', '皮壳正面伸长': 'Case front extension',
+    '封套背脊': 'Sleeve spine',
+    '内盒长': 'Inner box length', '内盒宽': 'Inner box width', '内盒高': 'Inner box height',
+    '内盒围边宽': 'Inner box wall width', '内盒侧边间距': 'Inner box side spacing',
+    '内盒内裱纸': 'Inner box lining', '内盒内裱纸厚度': 'Inner box lining thickness',
+    '内盒内贴厚度': 'Inner box inner lining thickness',
+    '内盒面纸厚度': 'Inner box cover paper thickness', '内盒卡纸厚度': 'Inner box card thickness',
+    '内盒灰板纸厚': 'Inner box greyboard thickness', '内围条灰板厚度': 'Inner rim greyboard thickness',
+    '内页灰板纸厚': 'Inner page greyboard thickness',
+    '底盖长': 'Bottom lid length', '底盖面纸': 'Bottom lid cover paper',
+    '底盖灰板长': 'Bottom lid greyboard length', '底盖灰板直径': 'Bottom lid greyboard diameter',
+    '底面纸长': 'Bottom cover paper length', '底面纸宽': 'Bottom cover paper width',
+    '底面纸高': 'Bottom cover paper height',
+    '底板宽度': 'Base board width', '底板灰板的厚度': 'Base board greyboard thickness',
+    '底片灰板厚度': 'Bottom panel greyboard thickness',
+    '底片伸长对齐': 'Bottom panel extension alignment',
+    /* —— 板材 / 裱纸 / 包边 —— */
+    '灰板厚度': 'Greyboard thickness', '纸板厚度': 'Board thickness', '刀卡厚度': 'Divider thickness',
+    '平板厚度': 'Flat board thickness', '装饰厚度': 'Decoration thickness',
+    '双面胶': 'Double-sided tape', '裱里纸': 'Lining paper', '裱纸厚度': 'Lining thickness',
+    '面纸厚度': 'Cover paper thickness', '里纸厚度': 'Lining paper thickness',
+    '外盒灰板厚度': 'Outer box greyboard thickness',
+    '外盒面纸厚度': 'Outer box cover paper thickness',
+    '外盒内裱纸厚度': 'Outer box inner lining thickness',
+    '外盒包边': 'Outer box wrap', '盒面纸厚度': 'Box cover paper thickness',
+    '侧板面纸厚度': 'Side panel cover paper thickness',
+    '包角宽度': 'Corner wrap width', 'EVA厚度': 'EVA thickness',
+    '绸带厚度': 'Ribbon thickness', '塑料片长': 'Plastic sheet length',
+    '口袋折叠厚度': 'Pocket fold thickness', '内管芯纸高': 'Core board height', '内管裱纸': 'Tube lining',
+    /* —— 围边（皮壳类）—— */
+    '围边长': 'Wall length', '围边宽': 'Wall width', '围边纸板高': 'Wall board height',
+    '围边卡纸厚度': 'Wall board thickness', '围边内裱纸厚度': 'Wall inner lining thickness',
+    '围边面纸长': 'Wall cover paper length', '围边面纸宽': 'Wall cover paper width',
+    '围边内折高度': 'Wall inner fold height', '围边凸出高度': 'Wall protrusion height',
+    '围边贴里长': 'Wall lining length',
+    /* —— 内托 / 卡板 / 夹层 / 抽屉 —— */
+    '内托长': 'Insert length', '内托宽': 'Insert width', '内托高': 'Insert height',
+    '内托厚度': 'Insert thickness', '内托墙宽': 'Insert wall width', '卡托高': 'Card insert height',
+    '卡板高': 'Card panel height', '横向卡板长': 'Horizontal card panel length',
+    '竖向卡板长': 'Vertical card panel length',
+    '夹层长': 'Divider length', '夹层宽': 'Divider width', '夹层高': 'Divider height',
+    '夹层包边': 'Divider wrap', '夹层纸板厚度': 'Divider board thickness',
+    '夹层面纸厚度': 'Divider cover paper thickness',
+    '抽屉长': 'Drawer length', '抽屉宽': 'Drawer width', '抽屉高': 'Drawer height',
+    '抽屉包边': 'Drawer wrap', '抽屉面纸厚度': 'Drawer cover paper thickness',
+    /* —— 特殊件 —— */
+    '飘口': 'Square (lip)', '上下缩短距离': 'Top/bottom trim', '挂翼半径': 'Hanging wing radius',
+    '挂翼自锁长': 'Hanging wing self-lock length', '挂翼自锁角度': 'Hanging wing self-lock angle',
+    /* —— 皮壳 / 书型盒 / 封套（第二批取样补的）—— */
+    '顶长': 'Top length', '提手长': 'Handle length', '提手宽': 'Handle width',
+    '围条长': 'Rim length', '围条宽': 'Rim width', '围条高': 'Rim height',
+    '围条纸厚度': 'Rim board thickness', '间隙高': 'Gap height',
+    '盖内贴': 'Lid inner liner', '底内贴': 'Base inner liner',
+    '天盖面纸厚度': 'Top lid cover paper thickness', '对折边': 'Turned edge',
+    '内页长': 'Inner page length', '内页宽': 'Inner page width',
+    '书脊': 'Spine', '槽位': 'Slot position',
+    '封面长': 'Cover length', '封面宽': 'Cover width',
+    '封套长': 'Sleeve length', '封套宽': 'Sleeve width',
+    '封套纸板厚': 'Sleeve board thickness', '封套面纸厚': 'Sleeve cover paper thickness',
+    '内折长度': 'Inner fold length',
+    /* —— 第三批（44 盒型抽样补的）+ 供组合使用的「零件词」—— */
+    '高度': 'Height', '防尘翼': 'Dust flap', '开口': 'Opening', '卡口': 'Notch',
+    '提手': 'Handle', '边距': 'Margin', '封套': 'Sleeve', '内页': 'Inner page', '封面': 'Cover',
+    '左边距': 'Left margin', '开口长': 'Opening length', '提手高': 'Handle height',
+    '插孔间距': 'Slot spacing', '卡口长': 'Notch length', '卡口宽': 'Notch width',
+    '外盒裱纸厚度': 'Outer box lining thickness', '内盒裱纸厚度': 'Inner box lining thickness',
+    '内盒内贴纸厚度': 'Inner box inner liner thickness', '内盒包边': 'Inner box wrap',
+    '盖直径': 'Lid diameter',
+    /* —— 第四批（87 盒型抽样补的）+ 可参与组合的零件词 —— */
+    '窗口': 'Window', '手孔': 'Hand hole', '天盒': 'Top box', '外盒': 'Outer box',
+    '围边面纸': 'Wall cover paper', '底面灰板': 'Bottom greyboard', '底裱纸': 'Base lining',
+    '底内裱纸': 'Base inner lining', '盖内裱纸': 'Lid inner lining',
+    '外盒内贴纸': 'Outer box inner liner', '折叠': 'Fold', '单盖': 'Single lid', '侧盖': 'Side lid',
+    '锁底': 'Lock bottom', '勾底': 'Auto-bottom', '正唛勾底': 'Front panel auto-bottom',
+    '半盖': 'Half lid', '米字孔数': 'Star hole count', '刀长': 'Rule length',
+    '重叠长': 'Overlap length', '放大距离': 'Bleed offset', '窗口上间距': 'Window top spacing',
+    '锁扣孔': 'Lock slot', '围边灰板': 'Wall greyboard',
+    '盒型选择': 'Box type'
+  };
+
+  /* 下拉选项（上游 dl[].t）：样式类枚举 */
+  var OPT_EN = {
+    '无': 'None', '有': 'Yes',
+    '插入式': 'Tuck-in', '插卡式': 'Push-in',
+    '导圆': 'Filleted', '半导圆': 'Half fillet', '斜口': 'Bevel',
+    '暗扣': 'Snap lock', '锁扣': 'Lock',
+    '直角': 'Square corner', '圆角': 'Rounded corner',
+    '单刀': 'Single cut', '双刀': 'Double cut'
+  };
+
+  var PM_NUM = /^(.*?)\s*([0-9]{1,2})$/;
+
+  /* 长尾兜底：英文「修饰词 + 名词」的语序和中文一致（围条长 → Rim length），
+     所以「已知零件词 + 量名后缀」可以安全组合 —— 1295 个盒型里总有想不到的复合名，
+     靠这条规则覆盖，剩下的仍回中文，绝不编造。 */
+  var PM_SUFFIX = [
+    ['厚度', 'thickness'], ['直径', 'diameter'], ['角度', 'angle'], ['半径', 'radius'],
+    ['间距', 'spacing'], ['位置', 'position'], ['长度', 'length'], ['高度', 'height'],
+    ['宽度', 'width'], ['长', 'length'], ['宽', 'width'], ['高', 'height'], ['深', 'depth'],
+    ['数', 'count']
+  ];
+
+  function composeParam(word) {
+    if (!word) return null;
+    for (var i = 0; i < PM_SUFFIX.length; i++) {
+      var suf = PM_SUFFIX[i][0];
+      if (word.length <= suf.length || word.slice(-suf.length) !== suf) continue;
+      var head = word.slice(0, -suf.length);
+      if (PARAM_EN[head]) return PARAM_EN[head] + ' ' + PM_SUFFIX[i][1];
+    }
+    return null;
+  }
+
+  /** 参数名：整词 → 基础词+编号 → 零件词组合 → 回中文（绝不编造） */
+  V2.paramLabel = function (name) {
+    if (V2.LANG !== 'en') return name;
+    var raw = String(name == null ? '' : name).trim();
+    if (!raw) return raw;
+    if (PARAM_EN[raw]) return PARAM_EN[raw];
+    var m = PM_NUM.exec(raw);
+    var base = m ? m[1] : '';
+    var num = m ? ' ' + m[2] : '';
+    if (base && PARAM_EN[base]) return PARAM_EN[base] + num;
+    var c = composeParam(base || raw);
+    if (c) return c + num;
+    return raw;
+  };
+
+  /** 下拉选项文案：命中就英文，否则回中文 */
+  V2.optLabel = function (t) {
+    if (V2.LANG !== 'en') return t;
+    var raw = String(t == null ? '' : t).trim();
+    return OPT_EN[raw] || raw;
+  };
 
   /** 精确 or 模式翻译；中文环境直接返回原文 */
   V2.t = function (s) {
