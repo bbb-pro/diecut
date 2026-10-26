@@ -19,6 +19,10 @@
     return src.replace(/assets\/[^\/]*$/, '') + 'data/';
   })();
 
+  /* 供其它模块拼绝对资源路径用（如 list.js 的缩略图 data/thumbs/）：
+     英文库页在 /en/box/，写相对路径会去找 /en/box/data/ → 404。 */
+  V2.DATA_BASE = BASE;
+
   /* 资源缓存版本串（cache-busting），值由 tools/bump-assets.mjs 按源码内容算出，
      写在 HTML 的 <script src="assets/common.js?v=xxx"> 上。
      ❗ 站点把 *.js / *.css 缓存 4 小时、HTML 只缓存 10 分钟 → 发版后老用户会拿到
@@ -751,15 +755,22 @@
       if (!box) return;
       kw = kw.trim().toLowerCase();
       if (!kw) return hide();
+      /* 英文库页在 /en/box/：卡片/联想链接都得带上页面注入的前缀，
+         否则相对 'box.html?id=' 会解析成 /en/box/box.html → 404 */
+      var href = window.V2_CARD_HREF || 'box.html?id=';
+      var en = !!(V2.isEn && V2.isEn());
       var hits = catalog.boxes.filter(function (b) {
-        return b.id.toLowerCase().indexOf(kw) >= 0 ||
-          b.name.toLowerCase().indexOf(kw) >= 0 ||
+        if (b.id.toLowerCase().indexOf(kw) >= 0) return true;
+        if (en) return (V2.catLabel(b) || '').toLowerCase().indexOf(kw) >= 0;
+        return b.name.toLowerCase().indexOf(kw) >= 0 ||
           b.tags.join(',').toLowerCase().indexOf(kw) >= 0;
       }).slice(0, 8);
       if (!hits.length) return hide();
       box.innerHTML = hits.map(function (b) {
-        return '<a class="sug" href="box.html?id=' + encodeURIComponent(b.id) + '">' +
-          '<b>' + esc(V2.displayName(b)) + '</b>' +
+        /* 英文页不显示中文盒型名（数据源只有中文），用编号 + 英文分类名 */
+        var main = en ? (V2.catLabel(b) || b.id) : V2.displayName(b);
+        return '<a class="sug" href="' + href + encodeURIComponent(b.id) + '">' +
+          '<b>' + esc(main) + '</b>' +
           '<span>' + esc(b.id) + ' · ' + dimText(b) + '</span></a>';
       }).join('');
       box.style.display = 'block';
@@ -800,6 +811,9 @@
   V2.CAT_FIX = { 0: '常用盒型' };
 
   V2.catName = function (cats, idx) {
+    /* 英文站：页面注入 window.V2_CAT_EN（生成器的 CAT_EN 表）→ 分类名用英文。
+       数据源里只有中文分类名，英文名是站点自己的对照表，不许机器硬翻。 */
+    if (window.V2_CAT_EN && window.V2_CAT_EN[idx] != null) return window.V2_CAT_EN[idx];
     if (V2.CAT_FIX[idx]) return V2.CAT_FIX[idx];
     for (var i = 0; i < (cats || []).length; i++) {
       if (cats[i].idx === idx) return cats[i].name;

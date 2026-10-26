@@ -1,24 +1,38 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Packaging box template library - 1295 die-cut box types online</title>
-<meta name="description" content="1295 packaging box die-cut templates covering tube boxes, tray boxes, rigid lid-base boxes, drawer boxes, gift boxes and corrugated cartons. Each box type includes a flat layout, adjustable parameters and structure tags. Export SVG / DXF / PDF.">
-<meta name="keywords" content="packaging box template, die-cut template, corrugated carton, FEFCO, box dieline">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Box template library - 1295 die-cut box types with previews</title>
+<meta name="description" content="Browse 1295 packaging box die-cut templates by structure category — tube boxes, trays, lid-and-base boxes, drawer boxes, gift boxes and corrugated cartons. Preview each box type, open it in the designer, adjust sizes and export SVG / DXF / PDF.">
+<meta name="keywords" content="packaging box template, die-cut template, box dieline, corrugated carton, FEFCO, gift box template">
 <link rel="canonical" href="https://057300.xyz/diecut/en/box/">
 <link rel="alternate" hreflang="zh-CN" href="https://057300.xyz/diecut/box/">
 <link rel="alternate" hreflang="en" href="https://057300.xyz/diecut/en/box/">
 <link rel="alternate" hreflang="x-default" href="https://057300.xyz/diecut/box/">
 <link rel="icon" href="../../favicon.ico" sizes="any">
 <link rel="icon" href="../../favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="box.css">
+<link rel="stylesheet" href="../../assets/style.css?v=4936691d93">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Packaging box template library - 1295 die-cut box types online">
-<meta property="og:description" content="1295 packaging box die-cut templates covering tube boxes, tray boxes, rigid lid-base boxes, drawer boxes, gift boxes and corrugated cartons. Each box type includes a flat layout, adjustable parameters and structure tags. Export SVG / DXF / PDF.">
+<meta property="og:title" content="Box template library - 1295 die-cut box types with previews">
+<meta property="og:description" content="Browse 1295 packaging box die-cut templates by structure category — tube boxes, trays, lid-and-base boxes, drawer boxes, gift boxes and corrugated cartons. Preview each box type, open it in the designer, adjust sizes and export SVG / DXF / PDF.">
 <meta property="og:url" content="https://057300.xyz/diecut/en/box/">
 <meta property="og:locale" content="en_US">
 <meta name="twitter:card" content="summary">
+<style>
+.search-hint{display:flex;gap:16px;flex-wrap:wrap;margin-top:4px}
+.sug-box{position:absolute;top:calc(100% + 6px);left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);overflow:hidden;display:none;z-index:60}
+.sug{display:flex;align-items:baseline;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border)}
+.sug:last-child{border-bottom:0}
+.sug:hover{background:var(--accent-weak)}
+.sug b{font-weight:600;font-size:13px}
+.sug span{font-size:11.5px;color:var(--muted);margin-left:auto;font-family:ui-monospace,Menlo,monospace}
+.seo-all{margin:36px 0 8px;border-top:1px solid var(--border);padding-top:16px}
+.seo-all summary{cursor:pointer;font-size:13.5px;color:var(--muted);font-weight:600}
+.seo-all h2{font-size:14px;margin:20px 0 8px;border:0;padding:0}
+.seo-all .rel{display:flex;flex-wrap:wrap;gap:6px}
+.seo-all .rel a{font-size:12px;color:var(--muted);text-decoration:none;border:1px solid var(--border);border-radius:6px;padding:2px 6px}
+</style>
 <script>
 var _hmt = _hmt || [];
 (function() {
@@ -32,11 +46,42 @@ s.parentNode.insertBefore(hm, s);
 crossorigin="anonymous"></script>
 </head>
 <body>
-<nav class="crumb"><a href="../../index.html">Box die-cut designer</a> &rsaquo; <strong>Box library</strong></nav>
-<h1>Packaging box library (1295 types)</h1>
-<p class="lead">Browse all 1295 box types by structure category. Click any box type to see its die-cut layout, adjustable parameters and structure tags.</p>
-<p class="cta"><a class="btn" href="../../index.html">Open the die-cut designer</a></p>
-<h2 id="c0">Free <span class="cnt">22</span></h2>
+<header class="topbar">
+  <a class="brand" href="../">
+    <span class="brand-mark">P</span>
+    Universal Box Template Library
+    <span class="brand-sub">Die-cut layouts · parametric design</span>
+  </a>
+  <div class="topbar-search">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <input id="q" type="search" placeholder="Search by box code or category, e.g. &quot;0201&quot;, &quot;tray&quot;" autocomplete="off">
+    <div class="sug-box" id="qbox"></div>
+  </div>
+  <div class="topbar-right">
+    <a class="btn btn-sm" href="../../box/" title="Switch to the Chinese version">中文版</a>
+    <a class="btn btn-sm" href="../box.html" title="Open the die-cut designer">Open designer</a>
+  </div>
+</header>
+<div class="loadbar" id="loadbar"><i></i></div>
+<div class="layout">
+  <aside class="sidebar" id="cats"></aside>
+  <main class="content">
+    <div class="hero">
+      <h1 id="heroTitle">All box types</h1>
+      <p id="heroDesc">Loading box data…</p>
+      <div class="hero-stats">
+        <div class="stat"><b id="statTotal">—</b><span>Box types</span></div>
+        <div class="stat"><b id="statCat">—</b><span>Categories</span></div>
+        <div class="stat"><b id="statChunk">—</b><span>Data chunks</span></div>
+        <div class="stat"><b>3</b><span>Size systems</span></div>
+      </div>
+    </div>
+    <div class="grid" id="grid">
+      <div class="empty" style="grid-column:1/-1"><b>Loading…</b>about 0.5 MB on first load</div>
+    </div>
+    <details class="seo-all">
+      <summary>All 1295 box types — text index</summary>
+<h2 id="c0">Recommended <span class="cnt">22</span></h2>
 <div class="rel"><a href="./JP012/">JP012</a> <a href="./JP010/">JP010</a> <a href="./JP009/">JP009</a> <a href="./JP002/">JP002</a> <a href="./JP008/">JP008</a> <a href="./JP003/">JP003</a> <a href="./JP004/">JP004</a> <a href="./JP011/">JP011</a> <a href="./JP013/">JP013</a> <a href="./JP014/">JP014</a> <a href="./JP015/">JP015</a> <a href="./JP016/">JP016</a> <a href="./JP017/">JP017</a> <a href="./JP018/">JP018</a> <a href="./JP019/">JP019</a> <a href="./JP020/">JP020</a> <a href="./JP023/">JP023</a> <a href="./M020/">M020</a> <a href="./E005AX/">E005AX</a> <a href="./E005BX/">E005BX</a> <a href="./E005XX/">E005XX</a> <a href="./E027XX/">E027XX</a></div>
 <h2 id="c1">A. Tube Boxes <span class="cnt">241</span></h2>
 <div class="rel"><a href="./C001AA/">C001AA</a> <a href="./C001AB/">C001AB</a> <a href="./C001AD/">C001AD</a> <a href="./C001AC/">C001AC</a> <a href="./B013A/">B013A</a> <a href="./A039/">A039</a> <a href="./A040/">A040</a> <a href="./A042/">A042</a> <a href="./K006/">K006</a> <a href="./C001X/">C001X</a> <a href="./A041A/">A041A</a> <a href="./K046A/">K046A</a> <a href="./A038/">A038</a> <a href="./A041/">A041</a> <a href="./C008/">C008</a> <a href="./T005/">T005</a> <a href="./C001AE/">C001AE</a> <a href="./B011A/">B011A</a> <a href="./T003/">T003</a> <a href="./T003A/">T003A</a> <a href="./T003B/">T003B</a> <a href="./T003C/">T003C</a> <a href="./T003D/">T003D</a> <a href="./T004/">T004</a> <a href="./T004A/">T004A</a> <a href="./T004B/">T004B</a> <a href="./T004C/">T004C</a> <a href="./T004D/">T004D</a> <a href="./T005A/">T005A</a> <a href="./T005B/">T005B</a> <a href="./T005C/">T005C</a> <a href="./T005D/">T005D</a> <a href="./0003/">0003</a> <a href="./0002/">0002</a> <a href="./0005/">0005</a> <a href="./0006/">0006</a> <a href="./0008/">0008</a> <a href="./0011/">0011</a> <a href="./0014/">0014</a> <a href="./0015/">0015</a> <a href="./0017/">0017</a> <a href="./0018/">0018</a> <a href="./0019/">0019</a> <a href="./0020/">0020</a> <a href="./0021/">0021</a> <a href="./0023/">0023</a> <a href="./0024/">0024</a> <a href="./0025/">0025</a> <a href="./0210/">0210</a> <a href="./0210A/">0210A</a> <a href="./0211/">0211</a> <a href="./0212/">0212</a> <a href="./0215/">0215</a> <a href="./0215A/">0215A</a> <a href="./A001/">A001</a> <a href="./A001A/">A001A</a> <a href="./A001AX/">A001AX</a> <a href="./A001AY/">A001AY</a> <a href="./A001B/">A001B</a> <a href="./A001D/">A001D</a> <a href="./A001E/">A001E</a> <a href="./A001F/">A001F</a> <a href="./A001H/">A001H</a> <a href="./A001I/">A001I</a> <a href="./A001J/">A001J</a> <a href="./A001X/">A001X</a> <a href="./A002/">A002</a> <a href="./A002A/">A002A</a> <a href="./A002AX/">A002AX</a> <a href="./A002AY/">A002AY</a> <a href="./A002B/">A002B</a> <a href="./A002BX/">A002BX</a> <a href="./A002CX/">A002CX</a> <a href="./A002D/">A002D</a> <a href="./A002DX/">A002DX</a> <a href="./A002E/">A002E</a> <a href="./A002EX/">A002EX</a> <a href="./A002F/">A002F</a> <a href="./A002FX/">A002FX</a> <a href="./A002X/">A002X</a> <a href="./A003/">A003</a> <a href="./A003A/">A003A</a> <a href="./A003AY/">A003AY</a> <a href="./A003B/">A003B</a> <a href="./A003E/">A003E</a> <a href="./A006/">A006</a> <a href="./A007/">A007</a> <a href="./A009/">A009</a> <a href="./A010/">A010</a> <a href="./A011/">A011</a> <a href="./A014/">A014</a> <a href="./A015/">A015</a> <a href="./A020/">A020</a> <a href="./A023/">A023</a> <a href="./A030/">A030</a> <a href="./A032/">A032</a> <a href="./A032A/">A032A</a> <a href="./A033/">A033</a> <a href="./A033A/">A033A</a> <a href="./A033B/">A033B</a> <a href="./A034/">A034</a> <a href="./A034A/">A034A</a> <a href="./A036/">A036</a> <a href="./A036A/">A036A</a> <a href="./B004/">B004</a> <a href="./B007/">B007</a> <a href="./B008/">B008</a> <a href="./B009/">B009</a> <a href="./B010/">B010</a> <a href="./B011/">B011</a> <a href="./B012/">B012</a> <a href="./B013/">B013</a> <a href="./B014/">B014</a> <a href="./B017/">B017</a> <a href="./B018/">B018</a> <a href="./B019/">B019</a> <a href="./B020/">B020</a> <a href="./B021/">B021</a> <a href="./B023/">B023</a> <a href="./B025/">B025</a> <a href="./B025A/">B025A</a> <a href="./B025B/">B025B</a> <a href="./B029/">B029</a> <a href="./B030/">B030</a> <a href="./B031/">B031</a> <a href="./B032/">B032</a> <a href="./B033/">B033</a> <a href="./B034/">B034</a> <a href="./B035/">B035</a> <a href="./B037/">B037</a> <a href="./B038/">B038</a> <a href="./B040/">B040</a> <a href="./B040A/">B040A</a> <a href="./B041/">B041</a> <a href="./B042/">B042</a> <a href="./B042A/">B042A</a> <a href="./B043/">B043</a> <a href="./B044/">B044</a> <a href="./B044A/">B044A</a> <a href="./B044B/">B044B</a> <a href="./B044X/">B044X</a> <a href="./B046/">B046</a> <a href="./B048/">B048</a> <a href="./B048A/">B048A</a> <a href="./B050/">B050</a> <a href="./B053/">B053</a> <a href="./C001/">C001</a> <a href="./C001A/">C001A</a> <a href="./C001AX/">C001AX</a> <a href="./C001AY/">C001AY</a> <a href="./C001B/">C001B</a> <a href="./C001BX/">C001BX</a> <a href="./C001C/">C001C</a> <a href="./C001CX/">C001CX</a> <a href="./C001CY/">C001CY</a> <a href="./C001E/">C001E</a> <a href="./C001EX/">C001EX</a> <a href="./C001EY/">C001EY</a> <a href="./C001F/">C001F</a> <a href="./C001FX/">C001FX</a> <a href="./C001G/">C001G</a> <a href="./C001GX/">C001GX</a> <a href="./C001H/">C001H</a> <a href="./C001I/">C001I</a> <a href="./C001IX/">C001IX</a> <a href="./C001JX/">C001JX</a> <a href="./C001K/">C001K</a> <a href="./C001KX/">C001KX</a> <a href="./C001LX/">C001LX</a> <a href="./C001M/">C001M</a> <a href="./C001N/">C001N</a> <a href="./C001NX/">C001NX</a> <a href="./C001O/">C001O</a> <a href="./C001OX/">C001OX</a> <a href="./C001P/">C001P</a> <a href="./C001QX/">C001QX</a> <a href="./C001RX/">C001RX</a> <a href="./C002/">C002</a> <a href="./C002A/">C002A</a> <a href="./C003/">C003</a> <a href="./C003A/">C003A</a> <a href="./C004/">C004</a> <a href="./C004A/">C004A</a> <a href="./C005A/">C005A</a> <a href="./C006/">C006</a> <a href="./C006A/">C006A</a> <a href="./C007/">C007</a> <a href="./C009/">C009</a> <a href="./C010/">C010</a> <a href="./C013/">C013</a> <a href="./C014/">C014</a> <a href="./C015/">C015</a> <a href="./C015A/">C015A</a> <a href="./C016/">C016</a> <a href="./C017/">C017</a> <a href="./C017A/">C017A</a> <a href="./C018/">C018</a> <a href="./C019/">C019</a> <a href="./C020/">C020</a> <a href="./C021/">C021</a> <a href="./C022/">C022</a> <a href="./J019/">J019</a> <a href="./J019A/">J019A</a> <a href="./J020/">J020</a> <a href="./J028/">J028</a> <a href="./K001/">K001</a> <a href="./K003/">K003</a> <a href="./K003B/">K003B</a> <a href="./K004/">K004</a> <a href="./K004A/">K004A</a> <a href="./K005A/">K005A</a> <a href="./K006A/">K006A</a> <a href="./P002/">P002</a> <a href="./Q006/">Q006</a> <a href="./Q007/">Q007</a> <a href="./Q008/">Q008</a> <a href="./Z011A/">Z011A</a> <a href="./Z012/">Z012</a> <a href="./Z018/">Z018</a> <a href="./A037/">A037</a> <a href="./C001EA/">C001EA</a> <a href="./T001/">T001</a> <a href="./T001A/">T001A</a> <a href="./T001B/">T001B</a> <a href="./T001C/">T001C</a> <a href="./T001D/">T001D</a> <a href="./T002/">T002</a> <a href="./T002A/">T002A</a> <a href="./T002B/">T002B</a> <a href="./T002C/">T002C</a> <a href="./T002D/">T002D</a> <a href="./T006/">T006</a> <a href="./T006A/">T006A</a> <a href="./T006B/">T006B</a> <a href="./T006C/">T006C</a> <a href="./T006D/">T006D</a> <a href="./T007/">T007</a> <a href="./T007A/">T007A</a> <a href="./T007B/">T007B</a> <a href="./T007C/">T007C</a> <a href="./T007D/">T007D</a></div>
@@ -78,6 +123,21 @@ crossorigin="anonymous"></script>
 <div class="rel"><a href="./U001/">U001</a></div>
 <h2 id="c20">X. Imposition <span class="cnt">4</span></h2>
 <div class="rel"><a href="./X001/">X001</a> <a href="./X001A/">X001A</a> <a href="./X001B/">X001B</a> <a href="./X001C/">X001C</a></div>
-<p class="langswitch"><a href="../../box/">中文版</a></p>
+    </details>
+  </main>
+</div>
+<div class="hvp" id="hvp" hidden>
+  <div class="hvp-label">Box reference</div>
+  <div class="hvp-stage"><div class="hvp-flat"></div><div class="hvp-iso"></div></div>
+  <div class="hvp-cap"><b id="hvpId">—</b><span id="hvpName"></span><i id="hvpDim"></i></div>
+</div>
+<script>
+/* 英文分类名（生成器 CAT_EN）+ 卡片链接前缀：英文选型点开后进英文设计器 */
+window.V2_CAT_EN = {"0":"Recommended","1":"A. Tube Boxes","2":"B. Extended Tube Boxes","3":"D. Tray Boxes","4":"C. Rigid Lid-Base Boxes","5":"E. Hinged Lid Boxes","6":"I. Drawer Boxes","7":"Z. Irregular Shaped Boxes","8":"L. Display Boxes","9":"J. Common Cartons","10":"M. Inserts & Partitions","11":"F. Paper Bags","12":"G. Envelopes & Folders","13":"S. Labels & Hang Tags","14":"Q. Display Stands","15":"R. Plastic Sheet Boxes","16":"JP. Gift & Premium Boxes","17":"BQ. Others","18":"Y. Rounded Corner Boxes","19":"U. Flexible Packaging","20":"X. Imposition"};
+window.V2_CARD_HREF = '../box.html?id=';
+</script>
+<script src="../../assets/common.js?v=4936691d93"></script>
+<script src="../../assets/i18n.js?v=4936691d93"></script>
+<script src="../../assets/list.js?v=4936691d93"></script>
 </body>
 </html>

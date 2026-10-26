@@ -168,7 +168,7 @@ const ROBOTS_TXT =
    分类名只在 packmage 数据源里有中文版，英文版按结构含义手工定名，
    保留原前缀（A. / BQ. / JP.）以便与盒型编号对照。 */
 const CAT_EN = {
-  0: 'Free',
+  0: 'Recommended',
   1: 'A. Tube Boxes',
   2: 'B. Extended Tube Boxes',
   3: 'D. Tray Boxes',
@@ -466,7 +466,8 @@ function main() {
 
   // 目录页（中英各一份）
   fs.writeFileSync(path.join(OUT_DIR, 'index.html'), renderIndex(ids, byCat, cateName, meta, 'zh'));
-  fs.writeFileSync(path.join(EN_DIR, 'index.html'), renderIndex(ids, byCat, cateName, meta, 'en'));
+  /* 英文盒型库：左分类栏 + 右缩略图卡片（与中文首页同一套 list.js） */
+  fs.writeFileSync(path.join(EN_DIR, 'index.html'), renderEnLib(ids, byCat, cateName, meta));
 
   // 英文站入口页 /en/
   fs.writeFileSync(path.join(EN_ROOT, 'index.html'), renderEnHome(ids, byCat, cateName, ids.length));
@@ -793,7 +794,7 @@ function renderEnHome(ids, byCat, cateName, total) {
   let cats = '';
   Object.keys(byCat).sort((a, b) => a - b).forEach((c) => {
     const name = CAT_EN[c] || ('Category ' + c);
-    cats += '<li><a href="box/#c' + c + '">' + esc(name) + '</a> ' +
+    cats += '<li><a href="box/?cat=' + c + '">' + esc(name) + '</a> ' +
       '<span class="cnt">(' + byCat[c].length + ')</span></li>\n';
   });
 
@@ -856,7 +857,149 @@ function renderEnHome(ids, byCat, cateName, total) {
     '</body>\n</html>\n';
 }
 
-/* ---------------- 共享样式 ---------------- */
+/* ---------------- 英文站盒型库（/en/box/）----------------
+   与中文首页 index.html 同一套界面：左分类栏 + 右缩略图卡片网格，
+   由 assets/list.js 驱动（中英共用一份 JS，英文页注入分类英文名与卡片链接前缀）。
+   卡片标题用「编号 + 英文分类名」：数据源里盒型名只有中文，硬翻既无依据又易错，
+   辨识主要靠缩略图与编号 —— 编号本身就是国际通用的盒型代码。
+   底部保留 A–Z 纯文本索引：给搜索引擎和无 JS 环境留一条可达路径（含 #cN 锚点）。 */
+
+/** 读 index.html 上已写好的静态资源版本串，保证和主站同一次发版一起换 */
+function assetVer() {
+  try {
+    const s = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const m = /assets\/common\.js\?v=([A-Za-z0-9._-]+)/.exec(s);
+    return m ? m[1] : '';
+  } catch (e) {
+    return '';
+  }
+}
+
+function renderEnLib(ids, byCat, cateName, meta) {
+  const total = ids.length;
+  const url = BASE + '/en/box/';
+  const v = assetVer();
+  const q = (f) => f + (v ? '?v=' + v : '');
+
+  const title = 'Box template library - ' + total + ' die-cut box types with previews';
+  const desc = 'Browse ' + total + ' packaging box die-cut templates by structure category — ' +
+    'tube boxes, trays, lid-and-base boxes, drawer boxes, gift boxes and corrugated cartons. ' +
+    'Preview each box type, open it in the designer, adjust sizes and export SVG / DXF / PDF.';
+
+  const altHtml =
+    '<link rel="alternate" hreflang="zh-CN" href="' + esc(BASE + '/box/') + '">\n' +
+    '<link rel="alternate" hreflang="en" href="' + esc(url) + '">\n' +
+    '<link rel="alternate" hreflang="x-default" href="' + esc(BASE + '/box/') + '">\n';
+
+  /* 分类英文名注入给 list.js（common.js 的 catName 会优先用它） */
+  const catMap = {};
+  Object.keys(byCat).sort((a, b) => a - b).forEach((c) => {
+    catMap[c] = CAT_EN[c] || ('Category ' + c);
+  });
+
+  /* A–Z 纯文本索引（SEO / 无 JS 兜底） */
+  let seoIndex = '';
+  Object.keys(byCat).sort((a, b) => a - b).forEach((c) => {
+    const links = byCat[c].map((id) =>
+      '<a href="./' + encodeURIComponent(id) + '/">' + esc(id) + '</a>').join(' ');
+    seoIndex += '<h2 id="c' + c + '">' + esc(catMap[c]) + ' <span class="cnt">' +
+      byCat[c].length + '</span></h2>\n<div class="rel">' + links + '</div>\n';
+  });
+
+  return '<!DOCTYPE html>\n<html lang="en">\n<head>\n' +
+    '<meta charset="utf-8">\n' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">\n' +
+    '<title>' + esc(title) + '</title>\n' +
+    '<meta name="description" content="' + esc(desc) + '">\n' +
+    '<meta name="keywords" content="packaging box template, die-cut template, box dieline, ' +
+    'corrugated carton, FEFCO, gift box template">\n' +
+    '<link rel="canonical" href="' + esc(url) + '">\n' +
+    altHtml +
+    '<link rel="icon" href="../../favicon.ico" sizes="any">\n' +
+    '<link rel="icon" href="../../favicon.svg" type="image/svg+xml">\n' +
+    '<link rel="stylesheet" href="' + q('../../assets/style.css') + '">\n' +
+    '<meta property="og:type" content="website">\n' +
+    '<meta property="og:title" content="' + esc(title) + '">\n' +
+    '<meta property="og:description" content="' + esc(desc) + '">\n' +
+    '<meta property="og:url" content="' + esc(url) + '">\n' +
+    '<meta property="og:locale" content="en_US">\n' +
+    '<meta name="twitter:card" content="summary">\n' +
+    '<style>\n' +
+    '.search-hint{display:flex;gap:16px;flex-wrap:wrap;margin-top:4px}\n' +
+    '.sug-box{position:absolute;top:calc(100% + 6px);left:0;right:0;background:#fff;' +
+    'border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow-lg);' +
+    'overflow:hidden;display:none;z-index:60}\n' +
+    '.sug{display:flex;align-items:baseline;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border)}\n' +
+    '.sug:last-child{border-bottom:0}\n' +
+    '.sug:hover{background:var(--accent-weak)}\n' +
+    '.sug b{font-weight:600;font-size:13px}\n' +
+    '.sug span{font-size:11.5px;color:var(--muted);margin-left:auto;font-family:ui-monospace,Menlo,monospace}\n' +
+    '.seo-all{margin:36px 0 8px;border-top:1px solid var(--border);padding-top:16px}\n' +
+    '.seo-all summary{cursor:pointer;font-size:13.5px;color:var(--muted);font-weight:600}\n' +
+    '.seo-all h2{font-size:14px;margin:20px 0 8px;border:0;padding:0}\n' +
+    '.seo-all .rel{display:flex;flex-wrap:wrap;gap:6px}\n' +
+    '.seo-all .rel a{font-size:12px;color:var(--muted);text-decoration:none;' +
+    'border:1px solid var(--border);border-radius:6px;padding:2px 6px}\n' +
+    '</style>\n' +
+    STAT_HTML +
+    ADS_HTML +
+    '</head>\n<body>\n' +
+    '<header class="topbar">\n' +
+    '  <a class="brand" href="../">\n' +
+    '    <span class="brand-mark">P</span>\n' +
+    '    Universal Box Template Library\n' +
+    '    <span class="brand-sub">Die-cut layouts · parametric design</span>\n' +
+    '  </a>\n' +
+    '  <div class="topbar-search">\n' +
+    '    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/>' +
+    '<path d="M20 20l-3.5-3.5"/></svg>\n' +
+    '    <input id="q" type="search" placeholder="Search by box code or category, e.g. &quot;0201&quot;, &quot;tray&quot;" autocomplete="off">\n' +
+    '    <div class="sug-box" id="qbox"></div>\n' +
+    '  </div>\n' +
+    '  <div class="topbar-right">\n' +
+    '    <a class="btn btn-sm" href="../../box/" title="Switch to the Chinese version">中文版</a>\n' +
+    '    <a class="btn btn-sm" href="../box.html" title="Open the die-cut designer">Open designer</a>\n' +
+    '  </div>\n' +
+    '</header>\n' +
+    '<div class="loadbar" id="loadbar"><i></i></div>\n' +
+    '<div class="layout">\n' +
+    '  <aside class="sidebar" id="cats"></aside>\n' +
+    '  <main class="content">\n' +
+    '    <div class="hero">\n' +
+    '      <h1 id="heroTitle">All box types</h1>\n' +
+    '      <p id="heroDesc">Loading box data…</p>\n' +
+    '      <div class="hero-stats">\n' +
+    '        <div class="stat"><b id="statTotal">—</b><span>Box types</span></div>\n' +
+    '        <div class="stat"><b id="statCat">—</b><span>Categories</span></div>\n' +
+    '        <div class="stat"><b id="statChunk">—</b><span>Data chunks</span></div>\n' +
+    '        <div class="stat"><b>3</b><span>Size systems</span></div>\n' +
+    '      </div>\n' +
+    '    </div>\n' +
+    '    <div class="grid" id="grid">\n' +
+    '      <div class="empty" style="grid-column:1/-1"><b>Loading…</b>about 0.5 MB on first load</div>\n' +
+    '    </div>\n' +
+    '    <details class="seo-all">\n' +
+    '      <summary>All ' + total + ' box types — text index</summary>\n' +
+    seoIndex +
+    '    </details>\n' +
+    '  </main>\n' +
+    '</div>\n' +
+    '<div class="hvp" id="hvp" hidden>\n' +
+    '  <div class="hvp-label">Box reference</div>\n' +
+    '  <div class="hvp-stage"><div class="hvp-flat"></div><div class="hvp-iso"></div></div>\n' +
+    '  <div class="hvp-cap"><b id="hvpId">—</b><span id="hvpName"></span><i id="hvpDim"></i></div>\n' +
+    '</div>\n' +
+    '<script>\n' +
+    '/* 英文分类名（生成器 CAT_EN）+ 卡片链接前缀：英文选型点开后进英文设计器 */\n' +
+    'window.V2_CAT_EN = ' + JSON.stringify(catMap) + ';\n' +
+    'window.V2_CARD_HREF = \'../box.html?id=\';\n' +
+    '</script>\n' +
+    '<script src="' + q('../../assets/common.js') + '"></script>\n' +
+    '<script src="' + q('../../assets/i18n.js') + '"></script>\n' +
+    '<script src="' + q('../../assets/list.js') + '"></script>\n' +
+    '</body>\n</html>\n';
+}
 
 const CSS = 'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;' +
   'max-width:960px;margin:0 auto;padding:20px 16px 48px;line-height:1.7;color:#1f2328;background:#fff}\n' +
@@ -909,6 +1052,8 @@ module.exports = {
   renderPage: renderPage,
   renderIndex: renderIndex,
   renderEnHome: renderEnHome,
+  renderEnLib: renderEnLib,
+  assetVer: assetVer,
   buildEnBoxTool: buildEnBoxTool,
   loadData: loadData,
   buildGeometry: buildGeometry,
