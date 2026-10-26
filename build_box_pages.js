@@ -137,6 +137,17 @@ const STAT_HTML =
   '})();\n' +
   '</script>\n';
 
+/* ---------------- Google AdSense（全站页面统一注入） ----------------
+   插在每个页面 </head> 之前（Google 官方要求放在 <head> 与 </head> 之间）。
+   根 index.html 与 box.html 不在本生成器管辖内，由各自文件手动维护同一段 ADS_HTML；
+   CI 每月重跑本生成器，所以这里写死、别从别处 import。
+   ⚠️ 这段只是「启用 AdSense」；真正出广告还需要页面里有 <ins class="adsbygoogle"> 广告位，
+      广告位由 AdSense 后台生成后另行插入。 */
+const ADSENSE_CLIENT = 'ca-pub-1124987147181210';
+const ADS_HTML =
+  '<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=' + ADSENSE_CLIENT + '"\n' +
+  'crossorigin="anonymous"></script>\n';
+
 /* ---------------- robots.txt ----------------
    生成式引擎（AI 搜索/助手）的爬虫在这里显式放行 —— 这是 GEO 里少数
    「确定有用」的动作：被拦的爬虫不可能引用你的内容。
@@ -411,7 +422,8 @@ function main() {
     const rel = (byCat[cat] || []).filter((x) => x !== id).slice(0, 10);
 
     const html = renderPage({
-      id, box, geo, w, h, tags, cats, editable, rel, title, desc, hasGeom
+      id, box, geo, w, h, tags, cats, editable, rel, title, desc, hasGeom,
+      mask   // 英文页分类名（CAT_EN）依赖它；漏传会让 en 标题集体退化成 Uncategorized
     });
     const dir = path.join(OUT_DIR, id);
     fs.mkdirSync(dir, { recursive: true });
@@ -596,6 +608,7 @@ function renderPage(o, lang) {
     '<script type="application/ld+json">' + JSON.stringify(ld) + '</script>\n' +
     (en ? '<script type="application/ld+json">' + JSON.stringify(faqLd(cp.faq)) + '</script>\n' : '') +
     STAT_HTML +
+    ADS_HTML +
     '</head>\n<body>\n' +
 
     '<nav class="crumb"><a href="../index.html">' +
@@ -718,6 +731,7 @@ function renderIndex(ids, byCat, cateName, meta, lang) {
     '<meta property="og:locale" content="' + (en ? 'en_US' : 'zh_CN') + '">\n' +
     '<meta name="twitter:card" content="summary">\n' +
     STAT_HTML +
+    ADS_HTML +
     '</head>\n<body>\n' +
     '<nav class="crumb"><a href="' + toSite + 'index.html">' +
     (en ? 'Box die-cut designer' : '纸盒刀模设计器') + '</a> &rsaquo; <strong>' +
@@ -790,6 +804,7 @@ function renderEnHome(ids, byCat, cateName, total) {
     '<meta name="twitter:card" content="summary">\n' +
     '<script type="application/ld+json">' + JSON.stringify(ld) + '</script>\n' +
     STAT_HTML +
+    ADS_HTML +
     '</head>\n<body>\n' +
     '<nav class="crumb"><strong>Box template library</strong></nav>\n' +
     '<h1>Packaging box die-cut template generator</h1>\n' +
@@ -867,6 +882,8 @@ module.exports = {
   locAlt: locAlt,
   CSS: CSS,
   STAT_HTML: STAT_HTML,
+  ADS_HTML: ADS_HTML,
+  ADSENSE_CLIENT: ADSENSE_CLIENT,
   ROBOTS_TXT: ROBOTS_TXT,
   CAT_EN: CAT_EN,
   BASE: BASE,
