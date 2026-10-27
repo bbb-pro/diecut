@@ -167,8 +167,9 @@
       rm: { on: true, main: showMain, oth: showOth, choose: rmChoose(), txtMode: txtMode },
       unit: unit,
       fs: dimFs,
-      nameW: '展开宽',
-      nameH: '展开高'
+      /* 展开图上的宽高标签也走 i18n：英文页画「BLANK W / BLANK H」，中文页不变 */
+      nameW: V2.t('展开宽'),
+      nameH: V2.t('展开高')
     });
     $('canvasInner').innerHTML = svg;
     applyZoom(true);
@@ -440,7 +441,7 @@
             artImg = im; artURL = url;
             $('texClear').disabled = false;
             var st = $('texState');
-            st.textContent = 'test ' + im.width + '×' + im.height; st.classList.add('on');
+            st.textContent = im.width + ' × ' + im.height + ' px'; st.classList.add('on');
             applyArt2d(); applyArt3d();
             res({ w: im.width, h: im.height });
           };
@@ -862,8 +863,9 @@
     document.querySelectorAll('#segType button').forEach(function (b) {
       b.classList.toggle('on', b.dataset.t === dimType);
     });
-    $('typeHint').textContent = dimType === 'm' ? '当前：制造尺寸'
-      : dimType === 'i' ? '当前：内尺寸' : '当前：外尺寸';
+    /* 走 V2.t：英文页显示 Current: manufacturing / inner / outer（中文环境原样返回） */
+    $('typeHint').textContent = V2.t(dimType === 'm' ? '当前：制造尺寸'
+      : dimType === 'i' ? '当前：内尺寸' : '当前：外尺寸');
   }
 
   function syncUnit() {
@@ -1072,7 +1074,12 @@
       { k: 'o', label: '外尺寸', cls: '' }
     ];
 
-    var html = '<table class="size-table"><thead><tr><th>尺寸类型</th><th>长</th><th>宽</th><th>高</th></tr></thead><tbody>';
+    /* 表头 / 行名显式走 V2.t：英文页要显示 Dimension type / Length / Width / Height。
+       这张表每次改尺寸都会重建，靠 MutationObserver 兜容易漏（英文页之前就卡在这），
+       这里直接翻；中文环境下 V2.t 原样返回，零影响。 */
+    var html = '<table class="size-table"><thead><tr><th>' + V2.t('尺寸类型') + '</th>' +
+      '<th>' + V2.t('长') + '</th><th>' + V2.t('宽') + '</th><th>' + V2.t('高') + '</th>' +
+      '</tr></thead><tbody>';
     rows.forEach(function (r) {
       var tds = ['L', 'W', 'D'].map(function (k) {
         var s = S[k];
@@ -1080,7 +1087,7 @@
         return '<td>' + V2.num(v) + '</td>';
       }).join('');
       html += '<tr data-t="' + r.k + '" class="' + (dimType === r.k ? 'on' : '') + '">' +
-        '<td>' + r.label + '</td>' + tds + '</tr>';
+        '<td>' + V2.esc(V2.t(r.label)) + '</td>' + tds + '</tr>';
     });
     html += '</tbody></table>';
     $('sizeTable').innerHTML = html;
@@ -1110,7 +1117,9 @@
 
   function exportMeta() {
     return {
-      g: G, id: ID, name: V2.displayName(B), box: B,
+      /* 英文页不给中文名：它会进导出文件名（0201_锁扣包装盒_…svg），
+         英文用户下到一个中文文件名很怪；中文页保持原样 */
+      g: G, id: ID, name: V2.LANG === 'en' ? '' : V2.displayName(B), box: B,
       sizes: S, dimType: dimType, unit: unit,
       dim: showDim,
       rm: { on: true, main: showMain, oth: showOth, choose: rmChoose(), txtMode: txtMode }
@@ -1219,8 +1228,17 @@
   /* ==================== 标签 & 相关 ==================== */
 
   function renderTags() {
+    /* 英文页：这块标签是上游的中文元数据（「国际标准瓦楞纸箱」「餐椅箱」「卡纸瓦楞纸坑纸盒」…，
+       过滤后仍有 756 个去重词，且大量是 SEO 串），没有可靠译法，硬翻会造出假术语。
+       工具页本身 noindex，隐藏它既不丢 SEO 也不误导用户。中文页照旧。 */
+    var cloud = $('tags');
+    if (V2.LANG === 'en') {
+      var panel = cloud && cloud.closest ? cloud.closest('.panel') : null;
+      if (panel) panel.style.display = 'none';
+      return;
+    }
     /* 过滤掉纯 SEO 关键词 / 关键词串标签（「包装纸箱设计」「玩具包装，电子产品包装」这类对选盒型没帮助） */
-    $('tags').innerHTML = (B.tags || []).filter(function (t) {
+    cloud.innerHTML = (B.tags || []).filter(function (t) {
       return !V2.isJunkName(t);
     }).map(function (t) {
       return '<a class="tag" href="index.html?q=' + encodeURIComponent(t) + '">' + V2.esc(t) + '</a>';
@@ -1234,10 +1252,16 @@
     if (!rel.length) { $('relatedWrap').style.display = 'none'; return; }
 
     $('relatedRow').innerHTML = rel.map(function (x) {
+      /* 英文页卡片沿用库页规则：标题=编号、副标题=英文分类名；
+         数据源里的盒型名是中文（还混 SEO 串），不硬翻。中文页保持原名。 */
+      var isEn = V2.LANG === 'en';
+      var title = isEn ? x.id : V2.displayName(x);
+      var sub = isEn ? (V2.catLabel(x) || '') : (V2.nameIsPlaceholder(x) ? '' : x.id);
       return '<a class="card" href="box.html?id=' + encodeURIComponent(x.id) + '">' +
         '<div class="thumb" data-box="' + V2.esc(x.id) + '"><svg viewBox="0 0 100 62" preserveAspectRatio="none"><rect x="12" y="10" width="76" height="42" rx="3" fill="#eceff3"/></svg></div>' +
-        '<div class="card-body"><div class="card-title">' + V2.esc(V2.displayName(x)) + '</div>' +
-        (V2.nameIsPlaceholder(x) ? '' : '<div class="card-id">' + V2.esc(x.id) + '</div>') + '</div></a>';
+        '<div class="card-body"><div class="card-title' + (isEn ? ' is-id' : '') + '">' +
+        V2.esc(title) + '</div>' +
+        (sub ? '<div class="card-id">' + V2.esc(sub) + '</div>' : '') + '</div></a>';
     }).join('');
 
     V2.ensureGeo(rel).then(function () {

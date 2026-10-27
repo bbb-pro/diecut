@@ -303,7 +303,69 @@
     '未连接求解服务，已保留原刀模图形（尺寸标注已更新）': 'Solver not connected — the original die line is kept (dimension labels updated)',
     '已恢复为默认参数': 'Restored to default parameters',
     '这张图读不出来，换一张试试': 'This image could not be read — try another one',
-    '参数越界，已自动调整到可用范围': 'Value out of range — adjusted to the allowed range automatically'
+    '参数越界，已自动调整到可用范围': 'Value out of range — adjusted to the allowed range automatically',
+
+    /* ---- 2026-10-27 补：JS 动态渲染里遗漏的可见中文 ---- */
+    /* 分区名（渲染失败时会被拼进状态栏「X 渲染失败」） */
+    '头部': 'Header', '刀模图': 'Die line', '参数面板': 'Parameter panel',
+    '尺寸口径': 'Size reference', '尺寸对照': 'Size table', '相关盒型': 'Related box types',
+    '用途标签': 'Use tags', '导出面板': 'Export panel',
+    /* 空态 / 提示 */
+    '缺少盒型编号': 'Missing box code',
+    '请从盒型库进入': 'Open it from the box library',
+    '返回盒型库': 'Back to the box library',
+    '该盒型无额外参数': 'No extra parameters for this box type',
+    '该盒型没有厚度数据': 'No board thickness data for this box type',
+    '该盒型没有折叠结构，暂不支持 3D 立体图': 'This box type has no folding structure — no 3D preview',
+    '该盒型没有折叠结构（平面件／对折卡），暂无 3D 立体图':
+      'This box type has no folding structure (flat piece / one-fold card) — no 3D preview yet',
+    '图读不出来': 'Image could not be read',
+    '求解服务返回失败': 'The solver returned an error',
+    '不含此项': 'Not used',
+    /* 导出 / 打印状态 */
+    '已导出 SVG · 1:1 实际尺寸（mm），切割线 CUT / 压痕线 CREASE 分层':
+      'SVG exported · 1:1 actual size (mm) — cut lines on CUT, creases on CREASE',
+    '正在准备打印视图…': 'Preparing the print view…',
+    'PDF 导出失败': 'PDF export failed',
+    '正在渲染 PNG…': 'Rendering PNG…',
+    /* 展开图上的宽高标签（SVG 里直接画文字，必须给译文） */
+    '展开宽': 'BLANK W', '展开高': 'BLANK H',
+    /* 英文库页空态 / 悬停浮层 */
+    '没有匹配的盒型': 'No matching box type',
+    '换个关键词或分类试试': 'Try another keyword or category',
+    '立体图': '3D view',
+    /* 3D 面板：按钮 / 提示（title 也走这里，ATTRS 包含 title） */
+    '加载中…': 'Loading…',
+    '纸种 ⌄': 'Paper ⌄', '纸厚': 'Board',
+    '自动旋转': 'Auto-rotate', '复位视角': 'Reset view', '网格': 'Grid',
+    '▶ 自动折叠': '▶ Auto-fold', '⏸ 暂停': '⏸ Pause',
+    '折叠进度': 'Fold progress', '自动折叠速度': 'Auto-fold speed',
+    '折叠速度 慢': 'Fold speed · slow', '快': 'fast',
+    '关掉': 'Hide', '显示': 'Show',
+    '换纸张材质 / 盒体颜色': 'Change paper / box colour',
+    '按纸板厚度把盒面挤成薄板（厚度取自盒型求解结果，开关注会被记住）':
+      'Extrude the faces by board thickness (from the solver; the toggle is remembered)',
+    '让模型自己慢慢转圈，方便看背面': 'Let the model turn slowly so you can see the back',
+    '回到刚进来时的视角（不改动自动折叠 / 自动旋转的开关）':
+      'Back to the initial camera (auto-fold / auto-rotate toggles are kept)',
+    '显示 / 隐藏脚下的地面网格（选择会记住）': 'Show / hide the ground grid (remembered)',
+    '纸张材质': 'Paper', '7 种纸样': '7 paper samples', '自定义颜色': 'Custom colour',
+    /* 纸种（3D「纸种」浮层色块）
+       行业常用词：kraft / corrugated / gold & silver card / tinted paper */
+    '纸板原色': 'Board (plain)', '瓦楞纸': 'Corrugated', '牛皮纸': 'Kraft',
+    '金卡纸': 'Gold card', '银卡纸': 'Silver card', '青色纸': 'Cyan paper',
+    '粉色纸': 'Pink paper', '红色纸': 'Red paper',
+
+    /* ---- 2026-10-27 补二：3D 消息块 / 导出兜底 ---- */
+    '正在加载 3D 数据…': 'Loading 3D data…',
+    '隐藏': 'Hide',
+    '该盒型没有折叠结构（多为平面件或对折卡），':
+      'This box type has no folding structure (usually a flat piece or one-fold card),',
+    '暂时做不了 3D 立体图。': 'so no 3D preview is available yet.',
+    '按当前尺寸重新折叠失败，已保留上一次的 3D 图。':
+      'Re-folding at the current size failed — the previous 3D view is kept.',
+    '当前浏览器不支持内嵌打印，请改用 SVG 或 PNG 导出':
+      'This browser does not support inline printing — export SVG or PNG instead'
   };
 
   /* ---------------- 带数字/变量的句子：正则 -> 英文 ---------------- */
@@ -322,10 +384,23 @@
       return (DICT[m[1]] || m[1]) + ' is derived from the box structure and cannot be edited';
     }],
     [/^此盒型不含(.+)$/, function (m) { return 'This box type has no ' + (DICT[m[1]] || m[1]); }],
-    [/^求解参数 CAL，可调 (\d+–\d+) mm$/, 'Solver parameter CAL, adjustable {1} mm'],
+    [/^求解参数 CAL，可调 ([\d.]+–[\d.]+) mm$/, 'Solver parameter CAL, adjustable {1} mm'],
     [/^已贴图（(\d+) × (\d+)），平面图与立体图同步显示$/, 'Artwork applied ({1} × {2}) — shown on both 2D and 3D'],
-    [/^已按新尺寸求解（展开 (.+?) × (.+?) mm）(.*)$/, 'Recalculated for the new size (flat {1} × {2} mm){3}'],
-    [/^(.+?) 渲染失败（其余区域正常，可尝试强制刷新）$/, '{1} failed to render (the rest is fine; try a hard refresh)'],
+    [/^已按新尺寸求解（展开 (.+?) × (.+?) mm）(.*)$/, function (m) {
+      /* 尾部还挂着「 · 3 项已按盒型规则校正（d2、of 等）」——原样拼回去会留一段中文 */
+      var tail = String(m[3] || '');
+      var t = /^ · (\d+) 项已按盒型规则校正（(.+?)）$/.exec(tail);
+      if (t) {
+        tail = ' · ' + t[1] + (t[1] === '1' ? ' parameter' : ' parameters') +
+          ' adjusted to the box rules (' + t[2].replace(/、/g, ', ').replace(/\s*等$/, ' etc.') + ')';
+      }
+      return 'Recalculated for the new size (flat ' + m[1] + ' × ' + m[2] + ' mm)' + tail;
+    }],
+    [/^(.+?) 渲染失败（其余区域正常，可尝试强制刷新）$/, function (m) {
+      /* {1} 可能是多项，用「、」连起来（「参数面板、刀模图」）——逐个查词 */
+      return String(m[1]).split('、').map(function (x) { return DICT[x] || x; }).join(', ') +
+        ' failed to render (the rest of the page is fine; try a hard refresh)';
+    }],
     [/^3D 视图加载失败：(.+)$/, '3D view failed to load: {1}'],
     [/^按当前尺寸重算 3D 失败：(.+)$/, 'Re-solving the 3D view failed: {1}'],
     [/^未找到盒型 (.+)$/, 'Box type {1} not found'],
@@ -338,6 +413,36 @@
     [/^该盒型无标注数据$/, 'No dimension annotations for this box type'],
     [/^（(\d+) 段折叠）$/, '({1} fold steps)'],
     [/^按当前尺寸重算$/, 'from current size'],
+    /* ---- 2026-10-27 补：JS 拼接的整句（数字/变量位置不固定，只能走模式） ---- */
+    [/^加载失败: (.+)$/, 'Load failed: {1}'],
+    [/^纸板厚 (.+?)mm（内 (.+?) \/ 外 (.+?)）· 立体图用「纸厚」按钮开关$/,
+      'Board {1} mm (inner {2} / outer {3}) · toggle it with the &ldquo;Board&rdquo; button in the 3D view'],
+    [/^已导出 DXF · 切割线 (\d+) 条 \/ 压痕线 (\d+) 条，进刀模厂可直接用$/,
+      'DXF exported · {1} cut lines / {2} creases — ready to send to the die maker'],
+    [/^已调起打印（图纸 (.+?) × (.+?) mm）· 缩放选「100% 实际大小」，目标选「另存为 PDF」$/,
+      'Print dialog opened (drawing {1} × {2} mm) · set Scale to 100% (actual size), then Save as PDF'],
+    [/^已导出 PNG · (.+?) × (.+?) px$/, 'PNG exported · {1} × {2} px'],
+    [/^PNG 导出失败：(.+)$/, 'PNG export failed: {1}'],
+    [/^导出失败：(.+)$/, 'Export failed: {1}'],
+    [/^已贴图 (.+?) × (.+)$/, 'Artwork applied {1} × {2}'],
+    /* 3D 画布左上角的规格条：分号前那个 <b>ID</b> 是独立节点，文本节点形如
+       「 · 面板 12 · 铰链 5 · 拼版 2 件 · 折叠后 300 × 200 × 100 mm」
+       注意 V2.t 是对 trim 后的串做匹配，所以这里不能带前导空格 */
+    [/^·\s*面板 (\d+) · 铰链 (\d+)( · 拼版 (\d+) 件)? · 折叠后 (.+?) mm$/, function (m) {
+      return '· ' + m[1] + ' panels · ' + m[2] + ' hinges' +
+        (m[4] ? ' · ' + m[4] + ' parts' : '') + ' · folded ' + m[5] + ' mm';
+    }],
+    /* 3D「纸厚」按钮的 title：关掉/显示 纸板厚度（1.5mm，内 0.8 / 外 0.7；开关会被记住） */
+    [/^(关掉|显示)纸板厚度（(.+?)mm，内 (.+?) \/ 外 (.+?)；开关会被记住）$/, function (m) {
+      return (DICT[m[1]] || m[1]) + ' board thickness (' + m[2] + ' mm, inner ' + m[3] +
+        ' / outer ' + m[4] + '; remembered)';
+    }],
+    /* 3D「网格」按钮的 title：隐藏/显示 脚下的地面网格（选择会记住） */
+    [/^(隐藏|显示)脚下的地面网格（选择会记住）$/, function (m) {
+      return (DICT[m[1]] || m[1]) + ' the ground grid (remembered)';
+    }],
+    [/^求解服务返回 (\d+)$/, 'The solver returned {1}'],
+    [/^3D 视图启动失败：(.+)$/, '3D view failed to start: {1}'],
     /* 兜底：参数标签带序号的写法（「长 1」「偏移 2」）——译基础词、保留序号 */
     [/^(.+?)\s+(\d+)$/, function (m) { return (DICT[m[1]] || m[1]) + ' ' + m[2]; }]
   ];
@@ -632,23 +737,33 @@
     walk(root || document.body);
   };
 
-  /** 等 DOM 就绪 + 观察动态渲染的节点（列表卡片、状态行都是 JS 拼出来的） */
+  /** 等 DOM 就绪 + 观察动态渲染的节点（列表卡片、状态行、尺寸表都是 JS 拼出来的） */
   function boot() {
     if (V2.LANG !== 'en') return;
     V2.applyI18n(document.body);
     if (!window.MutationObserver) return;
-    var pending = null;
+    /* ❗ 早期写法是「pending 期间直接 return」，会把这一批 mutation 记录整批丢掉 ——
+       页面初始化时 3D/画布/列表同时在改 DOM，尺寸表、参数表这些后插入的节点
+       往往正好落在被丢掉的那几批里，于是「Three size references 表头还是中文」。
+       改成：记录先入队，定时统一 flush，一条都不丢。 */
+    var queue = [];
+    var timer = null;
+    function flush() {
+      timer = null;
+      var batch = queue;
+      queue = [];
+      for (var i = 0; i < batch.length; i++) {
+        var r = batch[i];
+        if (r.type === 'characterData') trTextNode(r.target);
+        else if (r.type === 'attributes') walk(r.target);
+        else for (var j = 0; j < r.addedNodes.length; j++) walk(r.addedNodes[j]);
+      }
+    }
     var mo = new MutationObserver(function (recs) {
-      if (pending) return;
-      pending = setTimeout(function () {
-        pending = null;
-        for (var i = 0; i < recs.length; i++) {
-          var r = recs[i];
-          if (r.type === 'characterData') trTextNode(r.target);
-          else if (r.type === 'attributes') walk(r.target);
-          else for (var j = 0; j < r.addedNodes.length; j++) walk(r.addedNodes[j]);
-        }
-      }, 120);
+      for (var i = 0; i < recs.length; i++) queue.push(recs[i]);
+      if (queue.length > 4000) queue.splice(0, queue.length - 4000);  // 兜底，别让队列无限长
+      if (timer) return;
+      timer = setTimeout(flush, 120);
     });
     mo.observe(document.body, {
       childList: true, subtree: true, characterData: true,

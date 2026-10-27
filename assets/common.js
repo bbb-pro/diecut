@@ -256,9 +256,13 @@
       out += '<g style="fill:none;stroke:' + V2.COLOR.dim + ';stroke-width:' + (opts.sw || V2.SW_MM).dim + '">';
     }
 
+    /* 展开图上的宽高标签也要过 i18n（英文页画 BLANK W / BLANK H）。
+       common.js 也会被不带 i18n.js 的页面加载（中文库页），所以先判存在。 */
+    var tt = function (s) { return typeof V2.t === 'function' ? V2.t(s) : s; };
+
     /* ---- 顶部：展开宽 ---- */
     {
-      var labW = (opts.nameW || '展开宽') + ' ' + conv(W) + ' ' + unit;
+      var labW = tt(opts.nameW || '展开宽') + ' ' + conv(W) + ' ' + unit;
       if (textW(labW, fs) > W * 0.94) labW = conv(W) + ' ' + unit;   // 装不下就转紧凑
       var dy = b[1] - band;
       out += '<line class="dim" x1="' + round1(b[0]) + '" y1="' + round1(b[1] - gap) +
@@ -278,7 +282,7 @@
       if (opts.standalone) {
         out += '<g style="fill:none;stroke:' + V2.COLOR.dim + ';stroke-width:' + (opts.sw || V2.SW_MM).dim + '">';
       }
-      var labH = (opts.nameH || '展开高') + ' ' + conv(H) + ' ' + unit;
+      var labH = tt(opts.nameH || '展开高') + ' ' + conv(H) + ' ' + unit;
       if (textW(labH, fs) > H * 0.94) labH = conv(H) + ' ' + unit;
       var dx = b[0] - band;
       out += '<line class="dim" x1="' + round1(b[0] - gap) + '" y1="' + round1(b[1]) +

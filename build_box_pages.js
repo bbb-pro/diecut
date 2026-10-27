@@ -621,7 +621,7 @@ function renderPage(o, lang) {
   // 英文页在 /en/box/<ID>/，「中文版」得退三级回站点根才能到 /box/<ID>/。
   // 早期版本写成 '../../box/<ID>/' 会解析成 /en/box/<ID>/ —— 等于链回自己。
   const langSwitch = en
-    ? '<p class="langswitch"><a href="' + toSite + 'box/' + encodeURIComponent(id) + '/">中文版</a></p>\n'
+    ? '<p class="langswitch"><a href="' + toSite + 'box/' + encodeURIComponent(id) + '/">中文</a></p>\n'
     : '<p class="langswitch"><a href="' + enUrl + '">English version</a></p>\n';
 
   return '<!DOCTYPE html>\n<html lang="' + (en ? 'en' : 'zh-CN') + '">\n<head>\n' +
@@ -745,7 +745,7 @@ function renderIndex(ids, byCat, cateName, meta, lang) {
   const altHtml = altLinksIndex();
 
   const langSwitch = en
-    ? '<p class="langswitch"><a href="../../box/">中文版</a></p>\n'
+    ? '<p class="langswitch"><a href="../../box/">中文</a></p>\n'
     : '<p class="langswitch"><a href="' + BASE + '/en/box/">English version</a></p>\n';
 
   return '<!DOCTYPE html>\n<html lang="' + (en ? 'en' : 'zh-CN') + '">\n<head>\n' +
@@ -851,7 +851,7 @@ function renderEnHome(ids, byCat, cateName, total) {
     '<p class="cta"><a class="btn" href="box/">Browse all ' + total +
     ' box types</a></p>\n' +
     '<h2>Categories</h2>\n<ul class="cats">\n' + cats + '</ul>\n' +
-    '<p class="langswitch"><a href="../">中文版</a></p>\n' +
+    '<p class="langswitch"><a href="../">中文</a></p>\n' +
     '<footer><a href="box/">Box library</a> &middot; ' + total +
     ' box types in total &middot; <a href="../">Box die-cut designer</a></footer>\n' +
     '</body>\n</html>\n';
@@ -958,7 +958,7 @@ function renderEnLib(ids, byCat, cateName, meta) {
     '    <div class="sug-box" id="qbox"></div>\n' +
     '  </div>\n' +
     '  <div class="topbar-right">\n' +
-    '    <a class="btn btn-sm" href="../../box/" title="Switch to the Chinese version">中文版</a>\n' +
+    '    <a class="btn btn-sm" href="../../box/" title="Switch to the Chinese version">中文</a>\n' +
     '  </div>\n' +
     '</header>\n' +
     '<div class="loadbar" id="loadbar"><i></i></div>\n' +
