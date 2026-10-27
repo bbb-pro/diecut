@@ -1031,10 +1031,13 @@
        若没有中文名（label 退化成代码本身），就不重复显示。 */
     var code = String(p.n == null ? '' : p.n);
     var labels = (C && C.labels) || {};
-    /* 英文页：参数名走 V2.paramLabel（行业术语，缺词回中文，不编造）；
-       上游偶尔给 "/" 或 "." 这种脏名字 —— 这时直接拿参数代码当名字，避免出现一个孤零零的斜杠。 */
-    var label = V2.paramLabel(p.d || labels[p.n] || code);
-    if (/^[.\/\\\-_\s·]+$/.test(label)) label = code;
+    /* 英文页：只显示参数代号，不显示参数名（上游中文名多为盒型专属生僻词，
+       意译容易误导，2026-10-27 定为只给代号）。
+       中文页保持原样：中文名 + 参数代码小标；上游偶尔给 "/" 或 "." 这种脏名字时，
+       直接用参数代码当名字，避免出现一个孤零零的斜杠。 */
+    var isEn = V2.LANG === 'en';
+    var label = isEn ? code : V2.paramLabel(p.d || labels[p.n] || code);
+    if (!isEn && /^[.\/\\\-_\s·]+$/.test(label)) label = code;
     var n = V2.esc(p.n);
     var body;
     if (p.dl && p.dl.length) {
@@ -1049,8 +1052,10 @@
     }
     return '<div class="param">' +
       '<label title="' + n + '">' +
-        '<span class="pname">' + V2.esc(label) + '</span>' +
-        (code && label !== code ? '<span class="pcode">' + V2.esc(code) + '</span>' : '') +
+        (isEn
+          ? '<span class="pname pname-code">' + V2.esc(label) + '</span>'
+          : '<span class="pname">' + V2.esc(label) + '</span>' +
+            (code && label !== code ? '<span class="pcode">' + V2.esc(code) + '</span>' : '')) +
       '</label>' +
       body + '</div>';
   }

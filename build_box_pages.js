@@ -959,7 +959,6 @@ function renderEnLib(ids, byCat, cateName, meta) {
     '  </div>\n' +
     '  <div class="topbar-right">\n' +
     '    <a class="btn btn-sm" href="../../box/" title="Switch to the Chinese version">中文版</a>\n' +
-    '    <a class="btn btn-sm" href="../box.html" title="Open the die-cut designer">Open designer</a>\n' +
     '  </div>\n' +
     '</header>\n' +
     '<div class="loadbar" id="loadbar"><i></i></div>\n' +
