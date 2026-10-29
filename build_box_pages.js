@@ -28,31 +28,40 @@ const TODAY = new Date().toISOString().slice(0, 10);
 // 站点最后实质性改版日期（GEO 用）。**改模板/文案时手动更新**——别用 TODAY，
 // 否则每次 CI 重建都把 dateModified 谎报成"今天"，AI 引擎会判定为噪音信号。
 const SITE_MOD = '2026-10-29';
+// 根站（057300.xyz「包装&物流工具箱」）已有全站级 GEO 体系：robots 的 Content-Signal、
+// /llms.txt、/ai/*.json、/about/、/atom.xml。本站是它的子工具，**只做接入，不另立品牌实体**。
+const ROOT_SITE = 'https://057300.xyz';
+const ATOM_URL = ROOT_SITE + '/atom.xml';
+const AUTHOR_NAME = '星辰月光酿大树';   // 根站 /about/ 公开的维护者署名
 
 /* GEO：站点级实体（Organization + WebSite）。
-   中英所有页面都重复声明同一个 @id —— schema.org 允许跨页复用同一定义，
-   比对每个页面各写一份不同的 name 更利于 AI 引擎聚合"这是同一个站"。 */
+   ❗ 品牌一律用根站的「包装&物流工具箱」，@id 也挂在根站域下 —— 与根站 /ai/service.json 里
+   那条 `{"@type":"Organization","name":"包装&物流工具箱","url":"https://057300.xyz/"}` 对齐
+   （它当初没写 @id，这里给一个规范值；以后根站页面写同一个 @id 就自动合并为同一实体）。
+   各页重复声明同一 @id 是 schema.org 允许的，比每页各写一个 name 更利于实体聚合。 */
 function siteLd() {
   return [
     {
       '@context': 'https://schema.org',
       '@type': 'Organization',
-      '@id': BASE + '/#org',
-      name: '通用包装盒型库',
-      alternateName: ['Packaging Box Die-Cut Library', '纸盒刀模库', '包装盒型库'],
-      url: BASE + '/',
-      logo: { '@type': 'ImageObject', url: BASE + '/favicon.svg' },
-      description: '面向包装结构设计与打样的免费盒型库：1295 个标准纸盒盒型的刀模展开图，' +
-        '支持在线改尺寸重算与 SVG / DXF / PDF / PNG 导出。'
+      '@id': ROOT_SITE + '/#org',
+      name: '包装&物流工具箱',
+      alternateName: ['Packaging & Logistics Toolbox', '057300.xyz'],
+      url: ROOT_SITE + '/',
+      founder: { '@type': 'Person', name: AUTHOR_NAME },
+      description: '面向包装设计与物流测算的免费在线工具集：纸盒刀模设计、集装箱装柜测算、' +
+        '条码标签设计、Markdown 编辑，全部在浏览器内运行，无需注册。',
+      knowsAbout: ['包装结构设计', '纸盒刀模', '刀模展开图', '集装箱装柜', '包装物流测算']
     },
     {
       '@context': 'https://schema.org',
       '@type': 'WebSite',
       '@id': BASE + '/#website',
       name: '通用包装盒型库',
+      alternateName: ['Packaging Box Die-Cut Library', '纸盒刀模库', '包装盒型库'],
       url: BASE + '/',
       inLanguage: ['zh-CN', 'en'],
-      publisher: { '@id': BASE + '/#org' }
+      publisher: { '@id': ROOT_SITE + '/#org' }
     }
   ];
 }
@@ -652,9 +661,9 @@ function renderPage(o, lang) {
     inLanguage: en ? 'en' : 'zh-CN',
     dateModified: SITE_MOD,
     isPartOf: { '@id': BASE + '/#website' },
-    about: { '@id': BASE + '/#org' },
-    author: { '@id': BASE + '/#org' },
-    publisher: { '@id': BASE + '/#org' }
+    about: { '@id': ROOT_SITE + '/#org' },
+    author: { '@type': 'Person', name: AUTHOR_NAME },
+    publisher: { '@id': ROOT_SITE + '/#org' }
   };
 
   // hreflang：中文页与英文页互指（两个语言版本都会输出这一段）
@@ -694,6 +703,9 @@ function renderPage(o, lang) {
     '<meta property="og:url" content="' + esc(url) + '">\n' +
     '<meta property="og:locale" content="' + (en ? 'en_US' : 'zh_CN') + '">\n' +
     '<meta name="twitter:card" content="summary">\n' +
+    // 订阅源用根站的 atom.xml（本站不单独发 feed），补掉 GEO 的「无 RSS」扣分
+    '<link rel="alternate" type="application/atom+xml" title="包装&amp;物流工具箱" href="' +
+    ATOM_URL + '">\n' +
     '<script type="application/ld+json">' + JSON.stringify(ld) + '</script>\n' +
     '<script type="application/ld+json">' + JSON.stringify(pageLd) + '</script>\n' +
     (en ? '<script type="application/ld+json">' + JSON.stringify(faqLd(cp.faq)) + '</script>\n' : '') +
@@ -758,6 +770,8 @@ function renderPage(o, lang) {
     '<footer><a href="' + langRoot + '/box/">' + (en ? cp.libLink : '盒型库') + '</a> &middot; ' +
     (en ? (boxTotal + ' box types in total') : ('全站 ' + boxTotal + ' 个盒型')) + ' &middot; ' +
     '<a href="' + toSite + 'index.html">' + (en ? cp.designerLink : '纸盒刀模设计器') +
+    // 关于页在根站（不新建），链过去即可 —— GEO 的 about 信号靠页面上的真实链接
+    '</a> &middot; <a href="' + ROOT_SITE + '/about/">' + (en ? 'About this site' : '关于本站') +
     '</a></footer>\n' +
     '</body>\n</html>\n';
 }
@@ -872,8 +886,9 @@ function renderEnHome(ids, byCat, cateName, total) {
     operatingSystem: 'Web Browser',
     inLanguage: 'en',
     dateModified: SITE_MOD,
-    author: { '@id': BASE + '/#org' },
-    publisher: { '@id': BASE + '/#org' },
+    author: { '@type': 'Person', name: AUTHOR_NAME },
+    publisher: { '@id': ROOT_SITE + '/#org' },
+    isPartOf: { '@id': BASE + '/#website' },
     isAccessibleForFree: true,
     offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
     featureList: [
@@ -939,6 +954,8 @@ function renderEnHome(ids, byCat, cateName, total) {
     '<meta property="og:url" content="' + esc(homeUrl) + '">\n' +
     '<meta property="og:locale" content="en_US">\n' +
     '<meta name="twitter:card" content="summary">\n' +
+    '<link rel="alternate" type="application/atom+xml" title="Packaging &amp; Logistics Toolbox" href="' +
+    ATOM_URL + '">\n' +
     '<script type="application/ld+json">' + JSON.stringify(ld) + '</script>\n' +
     '<script type="application/ld+json">' + JSON.stringify(faqLdHome) + '</script>\n' +
     siteLdHtml() +
@@ -963,7 +980,8 @@ function renderEnHome(ids, byCat, cateName, total) {
     faqHtml + '\n    </dl></section>\n' +
     '<p class="langswitch"><a href="../">中文</a></p>\n' +
     '<footer><a href="box/">Box library</a> &middot; ' + total +
-    ' box types in total &middot; <a href="../">Box die-cut designer</a></footer>\n' +
+    ' box types in total &middot; <a href="../">Box die-cut designer</a> &middot; ' +
+    '<a href="' + ROOT_SITE + '/about/">About this site</a></footer>\n' +
     '</body>\n</html>\n';
 }
 
@@ -1076,6 +1094,8 @@ function renderEnLib(ids, byCat, cateName, meta) {
     '.seo-all .rel a{font-size:12px;color:var(--muted);text-decoration:none;' +
     'border:1px solid var(--border);border-radius:6px;padding:2px 6px}\n' +
     '</style>\n' +
+    '<link rel="alternate" type="application/atom+xml" title="Packaging &amp; Logistics Toolbox" href="' +
+    ATOM_URL + '">\n' +
     '<script type="application/ld+json">' + JSON.stringify(ldLib) + '</script>\n' +
     siteLdHtml() +
     STAT_HTML +
@@ -1131,6 +1151,9 @@ function renderEnLib(ids, byCat, cateName, meta) {
     'window.V2_CAT_EN = ' + JSON.stringify(catMap) + ';\n' +
     'window.V2_CARD_HREF = \'../box.html?id=\';\n' +
     '</script>\n' +
+    '<footer><a href="' + ROOT_SITE + '/">Packaging &amp; Logistics Toolbox</a> &middot; ' +
+    '<a href="' + ROOT_SITE + '/about/">About this site</a> &middot; ' +
+    '<a href="../">Box die-cut designer</a></footer>\n' +
     '<script src="' + q('../../assets/common.js') + '"></script>\n' +
     '<script src="' + q('../../assets/i18n.js') + '"></script>\n' +
     '<script src="' + q('../../assets/list.js') + '"></script>\n' +
