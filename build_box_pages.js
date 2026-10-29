@@ -33,6 +33,8 @@ const SITE_MOD = '2026-10-29';
 const ROOT_SITE = 'https://057300.xyz';
 const ATOM_URL = ROOT_SITE + '/atom.xml';
 const AUTHOR_NAME = '星辰月光酿大树';   // 根站 /about/ 公开的维护者署名
+const CONTACT_EMAIL = '312655375@qq.com'; // 根站 /about/ 页面上已公开的联系邮箱
+const GITHUB_URL = 'https://github.com/bbb-pro'; // 本工具站点仓库所在的公开账号
 
 /* GEO：站点级实体（Organization + WebSite）。
    ❗ 品牌一律用根站的「包装&物流工具箱」，@id 也挂在根站域下 —— 与根站 /ai/service.json 里
@@ -49,6 +51,17 @@ function siteLd() {
       alternateName: ['Packaging & Logistics Toolbox', '057300.xyz'],
       url: ROOT_SITE + '/',
       founder: { '@type': 'Person', name: AUTHOR_NAME },
+      // 联系方式全部取自根站已在页面上公开的信息（/about/ 的邮箱、仓库所在的 GitHub 账号），
+      // 不编造任何外部身份。
+      email: CONTACT_EMAIL,
+      contactPoint: {
+        '@type': 'ContactPoint',
+        contactType: 'technical support',
+        email: CONTACT_EMAIL,
+        url: ROOT_SITE + '/about/',
+        availableLanguage: ['zh-CN', 'en']
+      },
+      sameAs: [GITHUB_URL],
       description: '面向包装设计与物流测算的免费在线工具集：纸盒刀模设计、集装箱装柜测算、' +
         '条码标签设计、Markdown 编辑，全部在浏览器内运行，无需注册。',
       knowsAbout: ['包装结构设计', '纸盒刀模', '刀模展开图', '集装箱装柜', '包装物流测算']
