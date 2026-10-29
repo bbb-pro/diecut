@@ -25,6 +25,42 @@ const EN_ROOT = path.join(ROOT, 'en');
 const EN_DIR = path.join(EN_ROOT, 'box');
 const BASE = 'https://057300.xyz/diecut';
 const TODAY = new Date().toISOString().slice(0, 10);
+// 站点最后实质性改版日期（GEO 用）。**改模板/文案时手动更新**——别用 TODAY，
+// 否则每次 CI 重建都把 dateModified 谎报成"今天"，AI 引擎会判定为噪音信号。
+const SITE_MOD = '2026-10-29';
+
+/* GEO：站点级实体（Organization + WebSite）。
+   中英所有页面都重复声明同一个 @id —— schema.org 允许跨页复用同一定义，
+   比对每个页面各写一份不同的 name 更利于 AI 引擎聚合"这是同一个站"。 */
+function siteLd() {
+  return [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      '@id': BASE + '/#org',
+      name: '通用包装盒型库',
+      alternateName: ['Packaging Box Die-Cut Library', '纸盒刀模库', '包装盒型库'],
+      url: BASE + '/',
+      logo: { '@type': 'ImageObject', url: BASE + '/favicon.svg' },
+      description: '面向包装结构设计与打样的免费盒型库：1295 个标准纸盒盒型的刀模展开图，' +
+        '支持在线改尺寸重算与 SVG / DXF / PDF / PNG 导出。'
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      '@id': BASE + '/#website',
+      name: '通用包装盒型库',
+      url: BASE + '/',
+      inLanguage: ['zh-CN', 'en'],
+      publisher: { '@id': BASE + '/#org' }
+    }
+  ];
+}
+/** 把 siteLd() 渲染成 <script> 标签串（供各页 head 拼接） */
+function siteLdHtml() {
+  return siteLd().map((o) =>
+    '<script type="application/ld+json">' + JSON.stringify(o) + '</script>\n').join('');
+}
 
 /* ---------------- 载入数据 ---------------- */
 
@@ -605,6 +641,22 @@ function renderPage(o, lang) {
       ]
   };
 
+  // GEO：页面实体。dateModified + author/publisher 是 AI 引擎判断"谁写的、多新"的两个硬信号，
+  // 缺这两项时 Google AI / Perplexity 的信任分会明显偏低。
+  const pageLd = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemPage',
+    '@id': url + '#page',
+    url: url,
+    name: title,
+    inLanguage: en ? 'en' : 'zh-CN',
+    dateModified: SITE_MOD,
+    isPartOf: { '@id': BASE + '/#website' },
+    about: { '@id': BASE + '/#org' },
+    author: { '@id': BASE + '/#org' },
+    publisher: { '@id': BASE + '/#org' }
+  };
+
   // hreflang：中文页与英文页互指（两个语言版本都会输出这一段）
   const enUrl = BASE + '/en/box/' + encodeURIComponent(id) + '/';
   const altHtml = altLinks(id);
@@ -643,7 +695,9 @@ function renderPage(o, lang) {
     '<meta property="og:locale" content="' + (en ? 'en_US' : 'zh_CN') + '">\n' +
     '<meta name="twitter:card" content="summary">\n' +
     '<script type="application/ld+json">' + JSON.stringify(ld) + '</script>\n' +
+    '<script type="application/ld+json">' + JSON.stringify(pageLd) + '</script>\n' +
     (en ? '<script type="application/ld+json">' + JSON.stringify(faqLd(cp.faq)) + '</script>\n' : '') +
+    siteLdHtml() +
     STAT_HTML +
     ADS_HTML +
     '</head>\n<body>\n' +
@@ -816,9 +870,55 @@ function renderEnHome(ids, byCat, cateName, total) {
     url: homeUrl,
     applicationCategory: 'DesignApplication',
     operatingSystem: 'Web Browser',
+    inLanguage: 'en',
+    dateModified: SITE_MOD,
+    author: { '@id': BASE + '/#org' },
+    publisher: { '@id': BASE + '/#org' },
+    isAccessibleForFree: true,
     offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    featureList: [
+      total + ' standard box types with real die-cut geometry',
+      'Manufacturing / inner / outer dimension references',
+      'Live recalculation when dimensions change',
+      'Export SVG / DXF (R12) / PDF / PNG'
+    ],
     description: desc
   };
+
+  // GEO：英文首页的 FAQ —— 内容与页面上可见的 <dl class="en-faq"> 逐字对应，
+  // 结构化数据与可见内容不一致会被判违规，改文案时两边一起改。
+  const faqs = [
+    ['Can I use these dielines for production?',
+      'Yes, for sampling and die-making. Every template is drawn in millimetres with solid ' +
+      'cut lines and dashed crease lines, and exports to DXF (R12 polylines), SVG, PDF at 1:1 ' +
+      'and PNG. Before running a job, apply one compensation pass for the board thickness and ' +
+      'the kerf of your cutting machine.'],
+    ['What is the difference between manufacturing, inner and outer size?',
+      'The manufacturing size is where the die line sits (the neutral layer). The inner size is ' +
+      'the manufacturing size minus the inward offset on both sides; the outer size adds the ' +
+      'outward offset. The thicker the board, the wider the gap — roughly 2 mm on 1 mm greyboard ' +
+      'and 6 mm or more on 3 mm corrugated. Switching the reference only changes the readout, ' +
+      'never the geometry.'],
+    ['Does the die line change when I edit a dimension?',
+      'Yes. Editing length, width, depth or any structural parameter re-solves the whole layout ' +
+      'instead of scaling it: tuck flaps, dust flaps and fold angles are recomputed under the ' +
+      'rules of that box type. Out-of-range values are clamped to the limit the box type allows ' +
+      'and the clamped value is written back into the field.'],
+    ['Do I need an account or a licence?',
+      'No. All ' + total + ' box types, dimension conversions and format exports are open without ' +
+      'sign-up, with no export quota.']
+  ];
+  const faqLdHome = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: faqs.map((f) => ({
+      '@type': 'Question',
+      name: f[0],
+      acceptedAnswer: { '@type': 'Answer', text: f[1] }
+    }))
+  };
+  const faqHtml = faqs.map((f) =>
+    '<dt>' + esc(f[0]) + '</dt>\n    <dd>' + esc(f[1]) + '</dd>').join('\n    ');
 
   return '<!DOCTYPE html>\n<html lang="en">\n<head>\n' +
     '<meta charset="UTF-8">\n' +
@@ -840,6 +940,14 @@ function renderEnHome(ids, byCat, cateName, total) {
     '<meta property="og:locale" content="en_US">\n' +
     '<meta name="twitter:card" content="summary">\n' +
     '<script type="application/ld+json">' + JSON.stringify(ld) + '</script>\n' +
+    '<script type="application/ld+json">' + JSON.stringify(faqLdHome) + '</script>\n' +
+    siteLdHtml() +
+    '<style>' +
+    '.en-faq{max-width:860px;margin:30px 0 12px;padding-top:22px;border-top:1px solid #e3e7ee}' +
+    '.en-faq h2{font-size:15.5px;margin:0 0 12px}' +
+    '.en-faq dt{font-size:13.5px;font-weight:600;margin-top:16px;color:#1b2230}' +
+    '.en-faq dd{font-size:13.5px;line-height:1.85;margin:5px 0 0;color:#3d4552}' +
+    '</style>\n' +
     STAT_HTML +
     ADS_HTML +
     '</head>\n<body>\n' +
@@ -851,6 +959,8 @@ function renderEnHome(ids, byCat, cateName, total) {
     '<p class="cta"><a class="btn" href="box/">Browse all ' + total +
     ' box types</a></p>\n' +
     '<h2>Categories</h2>\n<ul class="cats">\n' + cats + '</ul>\n' +
+    '<section class="en-faq"><h2>Frequently asked questions</h2>\n    <dl>\n    ' +
+    faqHtml + '\n    </dl></section>\n' +
     '<p class="langswitch"><a href="../">中文</a></p>\n' +
     '<footer><a href="box/">Box library</a> &middot; ' + total +
     ' box types in total &middot; <a href="../">Box die-cut designer</a></footer>\n' +
@@ -890,6 +1000,31 @@ function renderEnLib(ids, byCat, cateName, meta) {
     '<link rel="alternate" hreflang="zh-CN" href="' + esc(BASE + '/box/') + '">\n' +
     '<link rel="alternate" hreflang="en" href="' + esc(url) + '">\n' +
     '<link rel="alternate" hreflang="x-default" href="' + esc(BASE + '/box/') + '">\n';
+
+  // GEO：英文库页此前完全没有结构化数据（审计里 schema 项 0 分）——
+  // 补 CollectionPage + ItemList（按分类列出），让 AI 引擎知道这是一个「按结构分类的盒型目录」。
+  const ldLib = {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    '@id': url + '#page',
+    url: url,
+    name: title,
+    inLanguage: 'en',
+    dateModified: SITE_MOD,
+    isPartOf: { '@id': BASE + '/#website' },
+    about: { '@id': BASE + '/#org' },
+    publisher: { '@id': BASE + '/#org' },
+    mainEntity: {
+      '@type': 'ItemList',
+      numberOfItems: total,
+      itemListElement: Object.keys(byCat).sort((a, b) => a - b).map((c, i) => ({
+        '@type': 'ListItem',
+        position: i + 1,
+        name: (CAT_EN[c] || ('Category ' + c)) + ' (' + byCat[c].length + ' box types)',
+        url: BASE + '/en/box/?cat=' + c
+      }))
+    }
+  };
 
   /* 分类英文名注入给 list.js（common.js 的 catName 会优先用它） */
   const catMap = {};
@@ -941,6 +1076,8 @@ function renderEnLib(ids, byCat, cateName, meta) {
     '.seo-all .rel a{font-size:12px;color:var(--muted);text-decoration:none;' +
     'border:1px solid var(--border);border-radius:6px;padding:2px 6px}\n' +
     '</style>\n' +
+    '<script type="application/ld+json">' + JSON.stringify(ldLib) + '</script>\n' +
+    siteLdHtml() +
     STAT_HTML +
     ADS_HTML +
     '</head>\n<body>\n' +
