@@ -79,6 +79,9 @@ async function main() {
       q.set('daily-send', '1');
       q.set('token', token);
     } else {
+      // daily=1 现在也要 token：它要对 KV 做全量 list + 逐条 get，
+      // 公开可打的话几百次请求就能把免费读额度（10 万/天）耗光。
+      if (env.CF_REPORT_TOKEN) q.set('token', env.CF_REPORT_TOKEN);
       q.set('daily', '1');
     }
     const r = await fetch(`https://057300.xyz/api/export-log?${q.toString()}`);

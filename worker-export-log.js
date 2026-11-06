@@ -28,6 +28,37 @@ const REALTIME_MAIL = false;
 // 日报统计口径用的时区偏移（北京时间 UTC+8）
 const TZ_OFFSET_MIN = 8 * 60;
 
+/* ==================== 防滥用闸门 ====================
+ * KV 免费额度是「**1000 写/天**」——每次导出写 2 个键时，一天只撑得住 500 次导出；
+ * 一个 curl 循环几秒钟就能把它打穿，之后**静默丢数据**（catch 兜住不报错），日报变空。
+ * 所以这里做三件不需要额外存储的事：
+ *   1. 只接受本站页面发来的埋点（浏览器 POST 必带 Sec-Fetch-Site 或 Referer）
+ *   2. 负载上限 512 字节、字段白名单（正常一次约 60 字节）
+ *   3. **每事件 1 次写**（原来 2 次：事件 + 累计计数），累计数改为日报时合并一次
+ * 真正的洪峰拦截放在 Cloudflare 边缘的 Rate Limiting 规则上（见 README/交付说明），
+ * Worker 里不做计数器 —— 计数器本身就要写 KV，等于拿被保护的资源去记账。
+ */
+const MAX_BODY = 512;
+const SITE_HOSTS = ['057300.xyz', 'www.057300.xyz'];
+const EXPORT_TYPES = ['svg', 'dxf', 'pdf', 'png', 'jpg', 'jpeg', 'glb', 'zip', 'other'];
+
+/**
+ * 判断请求是否来自本站页面。
+ * 浏览器发起的 POST 一定带 Sec-Fetch-Site（现代浏览器）或 Referer（老浏览器）；
+ * 两者都没有 = 十有八九是脚本，直接静默丢弃。
+ */
+function fromOwnSite(request) {
+  const site = request.headers.get('sec-fetch-site');
+  if (site) return site === 'same-origin' || site === 'same-site' || site === 'none';
+  const ref = request.headers.get('referer') || request.headers.get('origin') || '';
+  if (!ref) return false;
+  try {
+    return SITE_HOSTS.indexOf(new URL(ref).hostname) >= 0;
+  } catch (e) {
+    return false;
+  }
+}
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
@@ -101,11 +132,15 @@ async function summarizeDays(kv, dateKeys) {
 
   const keys = await listExpKeys(kv);
 
+  // 全量 key 的 {ts} 列表（用于算累计总数，不再需要每事件写 count 键）
+  const allTs = [];
+
   // 先按时间戳把键分到各天，避免重复 get
   const buckets = new Map();
   for (const key of keys) {
     const meta = parseExpKey(key);
     if (!meta) continue;
+    allTs.push({ key, ts: meta.ts });
     const dk = bjDateKey(meta.ts);
     if (!want.has(dk)) continue;
     if (!buckets.has(dk)) buckets.set(dk, []);
@@ -138,13 +173,39 @@ async function summarizeDays(kv, dateKeys) {
 
   const out = {};
   for (const dk of dateKeys) out[dk] = want.get(dk);
-  return out;
+  return { days: out, all: allTs };
 }
 
-/** 读取累计总数 */
-async function readTotal(kv) {
-  const c = await kv.get('count');
-  return parseInt(c || '0', 10) || 0;
+/**
+ * 读取累计计数器。
+ * 新格式：`{"n":345,"ts":1730000000000}` —— n = ts 之前的导出总数（水位线）。
+ * 旧格式：纯数字（每次都 +1 的老实现），迁移时把水位线当作「此刻」，避免重复计数。
+ * @returns {{n:number, ts:number}}
+ */
+async function readCounter(kv) {
+  const raw = await kv.get('count');
+  if (!raw) return { n: 0, ts: Date.now() };
+  const t = String(raw).trim();
+  if (t.charAt(0) === '{') {
+    try {
+      const j = JSON.parse(t);
+      const n = parseInt(j.n, 10);
+      const ts = Number(j.ts);
+      return { n: Number.isFinite(n) ? n : 0, ts: Number.isFinite(ts) ? ts : Date.now() };
+    } catch (e) {
+      return { n: 0, ts: Date.now() };
+    }
+  }
+  const n = parseInt(t, 10);
+  // 老计数器统计的是「截至此刻」的全部事件，所以水位线只能给 now，否则会把这批 key 再数一遍
+  return { n: Number.isFinite(n) ? n : 0, ts: Date.now() };
+}
+
+/** 累计总数 = 水位线之前的总数 + 水位线之后还没合并的 key 数 */
+function totalFrom(counter, allKeys) {
+  let extra = 0;
+  for (const k of allKeys) if (k.ts > counter.ts) extra++;
+  return counter.n + extra;
 }
 
 /* ==================== 日报文本 ==================== */
@@ -241,10 +302,17 @@ async function sendDailyReport(env, ctx, dateKey) {
   const prev = prevDateKey(target);
 
   // 一次扫描同时算出当天与前一天（环比）
-  const days = await summarizeDays(kv, [target, prev]);
+  const { days, all } = await summarizeDays(kv, [target, prev]);
   const day = days[target];
   const prevTotal = days[prev] ? days[prev].total : 0;
-  const totalAll = await readTotal(kv);
+  const totalAll = totalFrom(await readCounter(kv), all);
+
+  // 顺手把累计计数器合并一次：**1 写/天**，替代原来「每导出一次就写一次 count」
+  try {
+    await kv.put('count', JSON.stringify({ n: totalAll, ts: Date.now() }));
+  } catch (e) {
+    console.error('counter merge failed:', (e && e.message) || e);
+  }
 
   const text = buildDailyText(day, totalAll, prevTotal);
   const subject = '刀模导出日报 · ' + target + ' · ' + day.total + ' 次';
@@ -269,13 +337,18 @@ export default {
     const url = new URL(request.url);
 
     // 手动预览日报（只返回文本，不发邮件）：GET /api/export-log?daily=1[&date=YYYY-MM-DD]
+    // ❗必须带 token：这个接口要做**全量 KV list + 逐条 get**，公开可打 = 读放大放大器
+    //   （几百次请求就能把免费额度 10 万读/天打光）。跟 daily-send 同一把锁。
     if (request.method === 'GET' && url.searchParams.get('daily')) {
       const kv = env.EXPORT_LOG;
       if (!kv) return new Response('no KV binding', { status: 500, headers: CORS });
+      if (env.REPORT_TOKEN && url.searchParams.get('token') !== env.REPORT_TOKEN) {
+        return new Response('Forbidden', { status: 403, headers: CORS });
+      }
       const target = url.searchParams.get('date') || bjDateKey(Date.now() - 24 * 3600 * 1000);
       const prev = prevDateKey(target);
-      const days = await summarizeDays(kv, [target, prev]);
-      const totalAll = await readTotal(kv);
+      const { days, all } = await summarizeDays(kv, [target, prev]);
+      const totalAll = totalFrom(await readCounter(kv), all);
       const text = buildDailyText(days[target], totalAll, days[prev] ? days[prev].total : 0);
       return new Response(text, {
         status: 200,
@@ -305,28 +378,47 @@ export default {
       return new Response('Method Not Allowed', { status: 405, headers: CORS });
     }
 
-    // 解析 beacon 负载（sendBeacon 默认 text/plain 或 application/json）
+    // 闸门 1：不是本站页面发来的，静默丢弃（204，不给脚本任何可探测的反馈）
+    if (!fromOwnSite(request)) {
+      return new Response(null, { status: 204, headers: CORS });
+    }
+
+    // 闸门 2：负载上限。正常埋点约 60 字节，超过 512 字节的必然不是我们的页面
+    const declared = parseInt(request.headers.get('content-length') || '0', 10) || 0;
+    if (declared > MAX_BODY) return new Response(null, { status: 204, headers: CORS });
+
+    let raw = '';
+    try {
+      raw = await request.text();
+    } catch (e) {
+      raw = '';
+    }
+    if (raw.length > MAX_BODY) return new Response(null, { status: 204, headers: CORS });
+
     let data = {};
     try {
-      const raw = await request.text();
       if (raw) data = JSON.parse(raw);
     } catch (e) { /* 忽略坏负载 */ }
 
-    const boxId = data.boxId || data.box || 'unknown';
-    const type = data.type || 'unknown';
+    // 闸门 3：字段白名单。boxId 只留字母数字下划线短横；类型只认已知格式
+    const boxId = String(data.boxId || data.box || 'unknown')
+      .slice(0, 24)
+      .replace(/[^A-Za-z0-9_-]/g, '_') || 'unknown';
+    const typeRaw = String(data.type || '').toLowerCase();
+    const type = EXPORT_TYPES.indexOf(typeRaw) >= 0 ? typeRaw : 'unknown';
     const ts = Date.now();
     const when = new Date(ts).toISOString();
     const ua = request.headers.get('user-agent') || '';
     const ip = request.headers.get('cf-connecting-ip') || '';
 
     // 1) KV 留痕（务必成功，catch 兜底）
+    //    ❗一次事件只写 1 个键。原来还要 get+put 一次 `count` 做累计，
+    //    等于每导出写 2 次 KV —— 免费额度 1000 写/天只够 500 次导出。
+    //    累计数改成日报时合并（1 写/天），见 readCounter / totalFrom。
     try {
       if (env.EXPORT_LOG) {
-        const key = 'exp:' + ts + ':' + String(boxId).replace(/[^a-zA-Z0-9_-]/g, '_');
+        const key = 'exp:' + ts + ':' + boxId;
         await env.EXPORT_LOG.put(key, JSON.stringify({ boxId, type, ts, when, ua, ip }));
-        const c = await env.EXPORT_LOG.get('count');
-        const n = (parseInt(c || '0', 10) || 0) + 1;
-        await env.EXPORT_LOG.put('count', String(n));
       }
     } catch (e) {
       console.error('KV write failed:', e.message);
