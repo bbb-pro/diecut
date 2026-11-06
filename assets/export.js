@@ -78,10 +78,24 @@
 
   V2.standaloneSvg = standalone;
 
+  /* 导出文件名：编号_盒型名_长x宽x高mm
+     ❗尺寸必须取 **meta.sizes**（detail.js 的 S，跟着每次重算实时更新），
+     不能用 meta.box.L/W/D —— 那是盒型库里的**默认尺寸**：用户把 350 改成 400 之后，
+     导出的文件仍叫 …350x250x200mm（2026-11-06 反馈的问题）。
+     sizes 里的 m 一定是「制造尺寸」：detail.js 在内/外口径下输入时已换算回制造值，
+     而刀模几何本身就是按制造尺寸画的，所以文件名描述的就是图纸实际尺寸。
+     没有某一维（ce 里没这个值）时跳过该维，不再出现 "350x250x—mm"。 */
   function fileBase(meta) {
-    var g = meta.g, b = meta.box || {};
-    var L = b.L && b.L.m, W = b.W && b.W.m, D = b.D && b.D.m;
-    var dim = (L || W || D) ? (V2.num(L) + 'x' + V2.num(W) + 'x' + V2.num(D) + 'mm') : '';
+    var b = meta.box || {}, sz = meta.sizes || {};
+    /* 有实时尺寸就**只**信实时 —— 别按维回退到默认值，
+       否则「这个盒型没有高」会被默认高填出来，文件名凭空多一个 200mm */
+    var live = !!(sz.L || sz.W || sz.D);
+    var pick = function (k) {
+      var v = live ? (sz[k] && sz[k].m) : (b[k] && b[k].m);
+      return (v == null || !isFinite(v)) ? null : Math.round(v * 100) / 100;
+    };
+    var dims = ['L', 'W', 'D'].map(pick).filter(function (v) { return v != null; });
+    var dim = dims.length ? dims.join('x') + 'mm' : '';
     return [meta.id, meta.name, dim].filter(Boolean).map(V2.safeName).join('_');
   }
 
@@ -255,7 +269,9 @@
         '目标选 <b>另存为 PDF</b>。图纸实际尺寸 ' + w.toFixed(1) + ' × ' + h.toFixed(1) + ' mm。';
 
     var html = '<!doctype html><html lang="' + (V2.LANG === 'en' ? 'en' : 'zh-CN') + '"><head><meta charset="utf-8">' +
-      '<title>' + V2.esc((meta.name || '') + ' ' + meta.id) + '</title><style>' +
+      /* 标题就是「另存为 PDF」时的默认文件名 —— 跟其他格式统一成
+         编号_盒型名_当前尺寸mm，别再是「名字 + 编号」 */
+      '<title>' + V2.esc(fileBase(meta)) + '</title><style>' +
       '@page{size:' + w.toFixed(1) + 'mm ' + h.toFixed(1) + 'mm;margin:0}' +
       'html,body{margin:0;padding:0;background:#fff}' +
       'svg{display:block;width:' + w.toFixed(1) + 'mm;height:' + h.toFixed(1) + 'mm}' +

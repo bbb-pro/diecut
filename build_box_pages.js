@@ -380,31 +380,69 @@ function faqLd(faq) {
  *
  * 只替换这几个特定句式里的数字，其余字节原样保留（含行尾，不做任何归一化）。
  */
+/** 按规则表做「只改数字、其余字节原样」的替换。
+    规则项 = [正则, (整段匹配, ...捕获组) => 新文本]；返回改后文本与改动处数。 */
+function applyCountRules(src, rules) {
+  let out = src;
+  let changed = 0;
+  for (const [re, fn] of rules) {
+    out = out.replace(re, (...args) => {
+      args.pop();   // 匹配偏移
+      args.pop();   // 原字符串
+      const rep = fn(...args);
+      if (rep !== args[0]) changed++;
+      return rep;
+    });
+  }
+  return { out, changed };
+}
+
 function syncIndexCounts(total, cateCount) {
   const file = path.join(ROOT, 'index.html');
   if (!fs.existsSync(file)) return { changed: false, replaced: 0, missing: true };
 
   const src = fs.readFileSync(file, 'utf8');
-  let replaced = 0;
-  let out = src;
-
   const rules = [
-    [/(\d+)(\s*个免费刀模展开图)/g, total],          // <title>、og:title
-    [/(\d+)(\s*个专业包装盒型刀模展开图)/g, total],   // description、og:description
-    [/(\d+)(\s*种包装盒型刀模展开图)/g, total],       // ld+json
-    [/(\d+)(\s*个分类)/g, cateCount],                 // description 里的分类数
+    [/(\d+)(\s*个免费刀模展开图)/g, (m, d, tail) => total + tail],          // <title>、og:title
+    [/(\d+)(\s*个专业包装盒型刀模展开图)/g, (m, d, tail) => total + tail],   // description、og:description
+    [/(\d+)(\s*种包装盒型刀模展开图)/g, (m, d, tail) => total + tail],       // ld+json
+    [/(\d+)(\s*个分类)/g, (m, d, tail) => cateCount + tail],                 // description 里的分类数
+    /* 2026-11-06 补：手写正文 / FAQ / featureList 里的同义句式。
+       原先只回写头部，正文那几处（含 FAQPage 的 acceptedAnswer，必须与可见文本逐字一致）
+       会随上游增减盒型慢慢漂掉。 */
+    [/(\d+)(\s*个标准盒型刀模展开图)/g, (m, d, tail) => total + tail],       // featureList
+    [/(\d+)(\s*个标准纸盒盒型)/g, (m, d, tail) => total + tail],            // 正文首句
+    [/(\d+)(\s*个盒型、尺寸换算)/g, (m, d, tail) => total + tail],           // FAQ 答案（正文 + JSON-LD 两处）
+    [/(\d+)(\s*个标准盒型的真实刀模几何数据)/g, (m, d, tail) => total + tail], // 页尾「最后更新」
   ];
 
-  rules.forEach(([re, n]) => {
-    out = out.replace(re, (m, d, tail) => {
-      if (d !== String(n)) replaced++;
-      return n + tail;
-    });
-  });
-
-  if (out === src) return { changed: false, replaced: 0 };
+  const { out, changed } = applyCountRules(src, rules);
+  if (!changed) return { changed: false, replaced: 0 };
   fs.writeFileSync(file, out);
-  return { changed: true, replaced: replaced };
+  return { changed: true, replaced: changed };
+}
+
+/** /diecut/llms.txt 是手写的，但里面有多处盒型 / 分类数量。
+    上游每月可能增减盒型，数字漂了会让 AI 直接引用到旧的规模数据，所以跟 index.html 一起同步。 */
+function syncLlmsCounts(total, cateCount) {
+  const file = path.join(ROOT, 'llms.txt');
+  if (!fs.existsSync(file)) return { changed: false, replaced: 0, missing: true };
+
+  const src = fs.readFileSync(file, 'utf8');
+  const rules = [
+    [/(\d+)(\s*个标准纸盒盒型的参数化刀模展开图)/g, (m, d, tail) => total + tail],
+    [/(\d+)(\s*个标准盒型、)/g, (m, d, tail) => total + tail],
+    [/(\d+)(\s*个结构分类)/g, (m, d, tail) => cateCount + tail],
+    [/(盒型数量：)(\d+)/g, (m, head, d) => head + total],
+    [/(结构分类：)(\d+)/g, (m, head, d) => head + cateCount],
+    [/(可索引，)(\d+)(\s*个)/g, (m, head, d, tail) => head + total + tail],
+    [/(\d+)(\s*个盒型、尺寸换算)/g, (m, d, tail) => total + tail],
+  ];
+
+  const { out, changed } = applyCountRules(src, rules);
+  if (!changed) return { changed: false, replaced: 0 };
+  fs.writeFileSync(file, out);
+  return { changed: true, replaced: changed };
 }
 
 /* ---------------- 主流程 ---------------- */
@@ -551,6 +589,7 @@ function main() {
 
   // 根页 SEO 头部的盒型数 / 分类数跟着一起走，免得上线后标题还挂着旧数字
   const idxSync = syncIndexCounts(ids.length, cates.length);
+  const llmsSync = syncLlmsCounts(ids.length, cates.length);
 
   console.log('生成盒型页: ' + count + ' 个（无有效几何: ' + noGeom + '）');
   console.log('输出目录: ' + OUT_DIR);
@@ -562,6 +601,10 @@ function main() {
       + ' 个（改写 ' + idxSync.replaced + ' 处）');
   } else {
     console.log('index.html SEO 头部数字已是最新（' + ids.length + ' 盒 / ' + cates.length + ' 分类）');
+  }
+  if (llmsSync.changed) {
+    console.log('llms.txt 数字已更新: ' + ids.length + ' 盒 / ' + cates.length + ' 分类（改写 '
+      + llmsSync.replaced + ' 处）');
   }
 }
 
@@ -1227,6 +1270,8 @@ module.exports = {
   renderEnLib: renderEnLib,
   assetVer: assetVer,
   buildEnBoxTool: buildEnBoxTool,
+  syncIndexCounts: syncIndexCounts,
+  syncLlmsCounts: syncLlmsCounts,
   loadData: loadData,
   buildGeometry: buildGeometry,
   buildSvg: buildSvg,
