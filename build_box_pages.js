@@ -179,11 +179,12 @@ function esc(s) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/* ---------------- 百度统计（全站页面统一注入） ----------------
+/* ---------------- 流量统计（全站页面统一注入）：百度统计 + 51.LA ----------------
    插在每个页面 </head> 之前（官方建议位置）。根 index.html 与 box.html
    不在本生成器管辖内，由各自文件手动维护同一段 STAT_HTML；
    CI 每月重跑本生成器，所以这里写死、别从别处 import。 */
 const BAIDU_HM_ID = '87c8e0d5bc10316e4785ef9f6300beeb';
+const LA_ID = '3RqyAkBd97JuF84j';   // 51.LA 统计：id 与 ck 同名
 const STAT_HTML =
   '<script>\n' +
   'var _hmt = _hmt || [];\n' +
@@ -193,7 +194,13 @@ const STAT_HTML =
   'var s = document.getElementsByTagName("script")[0];\n' +
   's.parentNode.insertBefore(hm, s);\n' +
   '})();\n' +
-  '</script>\n';
+  '</script>\n' +
+  /* 51.LA：官方给的是同步引入 + 内联 LA.init，两者必须保持先后顺序，
+     不能改成 async/defer（否则 LA.init 执行时 SDK 还没定义）。
+     加 window.LA 守卫：51.la 常被 uBlock / AdGuard 拦截，SDK 加载失败时
+     裸调 LA.init 会抛 ReferenceError，守卫后静默跳过、不影响页面其余逻辑。 */
+  '<script charset="UTF-8" id="LA_COLLECT" src="https://sdk.51.la/js-sdk-pro.min.js"></script>\n' +
+  '<script>window.LA&&LA.init({id:"' + LA_ID + '",ck:"' + LA_ID + '",autoTrack:true})</script>\n';
 
 /* ---------------- Google AdSense（全站页面统一注入） ----------------
    插在每个页面 </head> 之前（Google 官方要求放在 <head> 与 </head> 之间）。
