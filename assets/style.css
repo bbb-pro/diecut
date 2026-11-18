@@ -830,7 +830,7 @@ button, input, select { font-family: inherit; font-size: inherit; color: inherit
   /* 窄屏：右上按钮已 4 个，连同状态条一排排不下 → 允许各自折行 */
   .v3d-hud { flex-wrap: wrap; row-gap: 6px; }
   .v3d-viewbtns { flex-wrap: wrap; justify-content: flex-end; }
-  .v3d-paper { width: min(234px, calc(100vw - 40px)); }
+  .v3d-paper { width: min(254px, calc(100vw - 40px)); }
 }
 
 @media (max-width: 640px) {
@@ -970,27 +970,41 @@ button, input, select { font-family: inherit; font-size: inherit; color: inherit
 .v3d-viewbtns .v3d-btn { height: 28px; background: rgba(255, 255, 255, .92); box-shadow: var(--shadow); }
 .v3d-paper-t[aria-expanded="true"] { background: var(--accent-weak) !important; border-color: #bcd0ff; color: var(--accent-dark); font-weight: 600; }
 
-/* 纸种浮层：挂在按钮组右下，不占布局 */
+/* 纸张材质浮层：挂在按钮组右下，不占布局 */
 .v3d-paper {
-  position: absolute; right: 0; top: 34px; z-index: 4; width: 234px; padding: 11px 12px 12px;
+  position: absolute; right: 0; top: 34px; z-index: 4; width: 254px; padding: 11px 12px 12px;
   background: #fff; border: 1px solid var(--border-strong); border-radius: 12px;
   box-shadow: 0 12px 32px rgba(16, 24, 40, .16); text-align: left;
+  /* 15 个色块分三行，窄屏/横屏时高度可能超出画布 → 允许内部滚动，别顶到画布外 */
+  max-height: min(68vh, 440px); overflow-y: auto;
 }
 .v3d-paper-hd { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-2); margin-bottom: 9px; }
 .v3d-paper-hd em { font-style: normal; font-size: 10.5px; font-weight: 400; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
-.v3d-paper-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+/* 分组标题：纸板（含瓦楞）与彩纸分开，否则 15 个色块混在一起找不着 */
+.v3d-paper-grp { font-size: 10.5px; font-weight: 600; color: var(--muted); letter-spacing: .02em; margin: 0 0 6px; }
+.v3d-paper-grp + .v3d-paper-grid + .v3d-paper-grp { margin-top: 11px; }
+.v3d-paper-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; }
 .v3d-sw {
   position: relative; padding: 0; cursor: pointer; aspect-ratio: 1 / 1;
   border: 1px solid var(--border-strong); border-radius: 8px;
   background: var(--surface-2) center / cover no-repeat;
+  overflow: hidden;
 }
 .v3d-sw i { display: block; width: 100%; height: 100%; border-radius: 7px;
   background: linear-gradient(135deg, #ecd6b8 0%, #d8b184 55%, #c39a67 100%); }
+/* 厚度标签：色块底部一条半透明底 + 白字，扫一眼就知道哪块是 0.3、哪块是 7.0 */
+.v3d-sw b {
+  position: absolute; left: 0; right: 0; bottom: 0; padding: 3px 0 2px;
+  font-size: 9px; line-height: 1; font-weight: 600; color: #fff; text-align: center;
+  background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, .52));
+  pointer-events: none;
+}
 .v3d-sw:hover { border-color: #a9b4c6; }
 .v3d-sw.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-weak); }
+/* 勾放右上角：右下角留给厚度标签 */
 .v3d-sw.on::after {
-  content: '✓'; position: absolute; right: 3px; bottom: 1px; font-size: 11px;
-  color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .75);
+  content: '✓'; position: absolute; right: 3px; top: 0; font-size: 11px;
+  color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, .8);
 }
 .v3d-paper-ct { display: flex; align-items: center; gap: 8px; margin-top: 11px; font-size: 12px; color: var(--text-2); cursor: pointer; }
 .v3d-paper-ct input[type=color] {

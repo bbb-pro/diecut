@@ -349,9 +349,19 @@
     '回到刚进来时的视角（不改动自动折叠 / 自动旋转的开关）':
       'Back to the initial camera (auto-fold / auto-rotate toggles are kept)',
     '显示 / 隐藏脚下的地面网格（选择会记住）': 'Show / hide the ground grid (remembered)',
-    '纸张材质': 'Paper', '7 种纸样': '7 paper samples', '自定义颜色': 'Custom colour',
-    /* 纸种（3D「纸种」浮层色块）
-       行业常用词：kraft / corrugated / gold & silver card / tinted paper */
+    '纸张材质': 'Paper', '7 种纸样': '7 paper samples', '15 种': '15 options',
+    '自定义颜色': 'Custom colour',
+    /* 纸张材质（3D「纸种」浮层的两组色块）
+       行业常用词：SBS / folding boxboard（白卡）· kraft（牛皮）· greyboard（灰板）
+       corrugated E/B/C flute（瓦楞楞型，E/B/C 是国际通用楞号，不翻） */
+    '纸板 / 瓦楞': 'Board / corrugated', '彩纸 / 特种纸': 'Tinted / speciality',
+    '原色纸板': 'Board (plain)',
+    '白卡 0.3': 'SBS board 0.3', '白卡 0.5': 'SBS board 0.5',
+    '牛皮 0.4': 'Kraft 0.4', '灰板 1.0': 'Greyboard 1.0',
+    '瓦楞 E 楞': 'Corrugated E-flute', '瓦楞 B 楞': 'Corrugated B-flute',
+    '瓦楞 C 楞': 'Corrugated C-flute', '瓦楞 EB 楞': 'Corrugated EB-flute',
+    '瓦楞 BC 楞': 'Corrugated BC-flute',
+    /* 旧词条保留：老版本页面/缓存里还有这些纸名 */
     '纸板原色': 'Board (plain)', '瓦楞纸': 'Corrugated', '牛皮纸': 'Kraft',
     '金卡纸': 'Gold card', '银卡纸': 'Silver card', '青色纸': 'Cyan paper',
     '粉色纸': 'Pink paper', '红色纸': 'Red paper',

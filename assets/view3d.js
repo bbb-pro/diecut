@@ -309,16 +309,68 @@ const TEX_MM = 160;         // 一张贴图代表 160mm 见方的纸面
 /* 材质贴图按「本模块自身的 URL」定位：英文工具页在 /en/box.html，
    写成相对 'assets/mat/' 会解析到 /en/assets/mat/ → 404。 */
 const MAT_BASE = new URL('./mat/', import.meta.url).href;
-const PAPERS = [
-  { k: 'plain', name: '纸板原色' },
-  { k: 'wa',    name: '瓦楞纸', file: 'paper_wa_A.jpg' },
-  { k: 'niu',   name: '牛皮纸', file: 'paper_niu_A.jpg' },
-  { k: 'jin',   name: '金卡纸', file: 'paper_jin_A.jpg' },
-  { k: 'yin',   name: '银卡纸', file: 'paper_yin_A.jpg' },
-  { k: 'qing',  name: '青色纸', file: 'paper_qing_A.jpg' },
-  { k: 'pink',  name: '粉色纸', file: 'paper_pink_A.jpg' },
-  { k: 'red',   name: '红色纸', file: 'paper_red_A.jpg' },
+
+/* 瓦楞楞型（GB/T 6544 的常用值）：楞高＝板厚，楞距＝一个波长的宽度。
+   E 细瓦（1.5mm）多用于小彩盒、B/C 是运输箱主力、EB/BC 是双瓦（两层芯）。 */
+/* 断面的三层色：liner=面纸/里纸、core=瓦楞芯纸（牛皮色）、void=芯纸之间的空隙 */
+const FLUTE = {
+  E:  { cal: 1.5, pitch: 3.2, double: false, liner: '#f0e8d6', core: '#cbab7c', void: '#8b6f47' },
+  B:  { cal: 2.5, pitch: 6.5, double: false, liner: '#eee6d3', core: '#c7a677', void: '#876b44' },
+  C:  { cal: 4.0, pitch: 8.0, double: false, liner: '#ece3cf', core: '#c4a374', void: '#846841' },
+  EB: { cal: 6.0, pitch: 6.5, double: true,  liner: '#eee6d3', core: '#c5a475', void: '#856942' },
+  BC: { cal: 7.0, pitch: 8.0, double: true,  liner: '#ece3cf', core: '#c2a172', void: '#82663f' }
+};
+
+/* ---------- 纸张材质表 ----------
+   两件事分开：`col` 是 3D 里的基色（无贴图时用它），`file`/`gen` 是表面纹理。
+   PBR 三项（roughness / metalness / envMapIntensity）决定「像纸还是像塑料」：
+     · 纸板 roughness 0.74~0.92（越粗糙越没有锐利高光）
+     · metalness 基本 0，只有金/银卡才给 0.55 做金属反射
+     · envMapIntensity 是环境贴图的权重，纸面吃一点点就够，金属卡吃满
+   cal = 该规格的真实板厚（mm）。选带 cal 的材质会把「纸厚」按这个规格显示，
+   否则 1.5mm 的瓦楞断面根本看不见；用户之后在参数面板改纸厚，就改回上游值。 */
+const MATS = [
+  /* 纸板：6 种卡纸/纸板 + 5 种瓦楞 */
+  { k: 'auto',   grp: 'board', name: '原色纸板',  lab: '',    cal: 0,   gen: 'board', tint: 0xd8b184,
+    sw: 'linear-gradient(135deg,#ecd6b8 0%,#d8b184 55%,#c39a67 100%)', rough: 0.88, metal: 0.02, env: 0.55, bump: 0.55 },
+  { k: 'sbs03',  grp: 'board', name: '白卡 0.3',  lab: '0.3', cal: 0.3, gen: 'white', tint: 0xf6f3ea,
+    sw: '#f7f4ec', rough: 0.74, metal: 0.02, env: 0.62, bump: 0.30 },
+  { k: 'sbs05',  grp: 'board', name: '白卡 0.5',  lab: '0.5', cal: 0.5, gen: 'white', tint: 0xf4f0e6,
+    sw: '#f2eee4', rough: 0.76, metal: 0.02, env: 0.62, bump: 0.34 },
+  { k: 'kraft04',grp: 'board', name: '牛皮 0.4',  lab: '0.4', cal: 0.4, file: 'paper_niu_A.jpg', tint: 0xc9a06a,
+    sw: '#cfab7b', rough: 0.84, metal: 0.02, env: 0.55, bump: 0.45 },
+  { k: 'grey10', grp: 'board', name: '灰板 1.0',  lab: '1.0', cal: 1.0, gen: 'grey', tint: 0xb8b4ab,
+    sw: '#b9b5ac', rough: 0.92, metal: 0.02, env: 0.50, bump: 0.50 },
+  { k: 'fluteE', grp: 'board', name: '瓦楞 E 楞', lab: '1.5', cal: 1.5, file: 'paper_wa_A.jpg', tint: 0xd9c09a, flute: 'E',
+    sw: '#dcc4a0', rough: 0.88, metal: 0.02, env: 0.52, bump: 0.55 },
+  { k: 'fluteB', grp: 'board', name: '瓦楞 B 楞', lab: '2.5', cal: 2.5, file: 'paper_wa_A.jpg', tint: 0xd7be98, flute: 'B',
+    sw: '#d9c19c', rough: 0.88, metal: 0.02, env: 0.52, bump: 0.60 },
+  { k: 'fluteC', grp: 'board', name: '瓦楞 C 楞', lab: '4.0', cal: 4.0, file: 'paper_wa_A.jpg', tint: 0xd5bc96, flute: 'C',
+    sw: '#d7bf9a', rough: 0.89, metal: 0.02, env: 0.52, bump: 0.60 },
+  { k: 'fluteEB',grp: 'board', name: '瓦楞 EB 楞', lab: '6.0', cal: 6.0, file: 'paper_wa_A.jpg', tint: 0xd3ba94, flute: 'EB',
+    sw: '#d5bd98', rough: 0.89, metal: 0.02, env: 0.52, bump: 0.64 },
+  { k: 'fluteBC',grp: 'board', name: '瓦楞 BC 楞', lab: '7.0', cal: 7.0, file: 'paper_wa_A.jpg', tint: 0xd1b892, flute: 'BC',
+    sw: '#d3bb96', rough: 0.90, metal: 0.02, env: 0.52, bump: 0.64 },
+  /* 彩纸 / 特种纸：保留原来的 5 种色纸，金/银卡走金属反射 */
+  { k: 'jin',   grp: 'deco', name: '金卡纸', tint: 0xf0cf87,
+    sw: 'linear-gradient(135deg,#f7e6b8 0%,#d9b76d 45%,#a8843c 100%)', rough: 0.38, metal: 0.55, env: 1.00, bump: 0.05 },
+  { k: 'yin',   grp: 'deco', name: '银卡纸', tint: 0xdfe3e8,
+    sw: 'linear-gradient(135deg,#f7f9fb 0%,#cfd3d9 45%,#9aa0a8 100%)', rough: 0.36, metal: 0.55, env: 1.00, bump: 0.05 },
+  { k: 'qing',  grp: 'deco', name: '青色纸', file: 'paper_qing_A.jpg', tint: 0x8fb6bd,
+    sw: '#8fb6bd', rough: 0.80, metal: 0.02, env: 0.60, bump: 0.35 },
+  { k: 'pink',  grp: 'deco', name: '粉色纸', file: 'paper_pink_A.jpg', tint: 0xe0b3b6,
+    sw: '#e0b3b6', rough: 0.80, metal: 0.02, env: 0.60, bump: 0.35 },
+  { k: 'red',   grp: 'deco', name: '红色纸', file: 'paper_red_A.jpg', tint: 0xb4463c,
+    sw: '#b4463c', rough: 0.80, metal: 0.02, env: 0.60, bump: 0.35 }
 ];
+
+/* 老版本的 key（存在 localStorage 里）→ 新材质，别让老用户的选择凭空失效 */
+const MAT_ALIAS = {
+  plain: 'auto', wa: 'fluteB', niu: 'kraft04',
+  jin: 'jin', yin: 'yin', qing: 'qing', pink: 'pink', red: 'red',
+  wcard03: 'sbs03', wcard05: 'sbs05', greyboard: 'grey10',
+  fluteE: 'fluteE', fluteB: 'fluteB', fluteC: 'fluteC', fluteEB: 'fluteEB', fluteBC: 'fluteBC'
+};
 
 /* ---------- 厚度（视觉加厚）与图稿贴图的状态 ----------
    加厚走「三明治」：外皮 +outer / 内皮 -inner（不对称，取自上游 ce.inner/outer），
@@ -473,6 +525,12 @@ export function create(host, onInfo, onPaper) {
     renderer.setClearColor(0x000000, 0);
     renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     renderer.setSize(w, h, false);
+    /* ACES 色调映射：环境贴图一进来，高光很容易顶到 1 就死白，
+       滚降一下才有「纸被光打亮」而不是「纸糊了一片白」。 */
+    if (THREE.ACESFilmicToneMapping != null) {
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.05;
+    }
     stage.appendChild(renderer.domElement);
 
     scene = new THREE.Scene();
@@ -510,11 +568,14 @@ export function create(host, onInfo, onPaper) {
     cv.addEventListener('pointercancel', function () { stage.classList.remove('is-drag'); });
 
     /* ⚠ 光照总系数别过 1（three r155+ 物理光照模式下会叠加，
-       一过曝纸板色被 clamp 成白色，就分不出面了）。 */
-    scene.add(new THREE.AmbientLight(0xffffff, 0.52));
-    const d1 = new THREE.DirectionalLight(0xffffff, 0.65); d1.position.set(-0.6, 1, 0.8); scene.add(d1);
-    const d2 = new THREE.DirectionalLight(0xffffff, 0.35); d2.position.set(0.9, -0.4, -0.7); scene.add(d2);
-    const d3 = new THREE.DirectionalLight(0xffffff, 0.28); d3.position.set(0.2, -1, 0.9); scene.add(d3);
+       一过曝纸板色被 clamp 成白色，就分不出面了）。
+       有了 IBL 之后环境贴图承担「基础亮度」，Ambient 只留一点点补死角 —— 
+       全靠 Ambient 打光才是塑料感的另一半（各方向亮度完全一样）。 */
+    buildEnv();
+    scene.add(new THREE.AmbientLight(0xffffff, 0.20));
+    const d1 = new THREE.DirectionalLight(0xffffff, 0.60); d1.position.set(-0.6, 1, 0.8); scene.add(d1);
+    const d2 = new THREE.DirectionalLight(0xffffff, 0.30); d2.position.set(0.9, -0.4, -0.7); scene.add(d2);
+    const d3 = new THREE.DirectionalLight(0xffffff, 0.24); d3.position.set(0.2, -1, 0.9); scene.add(d3);
 
     grid = new THREE.GridHelper(4000, 40, 0xd7dce4, 0xe6eaf0);
     grid.material.transparent = true;
@@ -526,10 +587,59 @@ export function create(host, onInfo, onPaper) {
     return true;
   }
 
-  /* ---------- 纸材质：纸种底色 ---------- */
+  /* ---------- 环境贴图（IBL） ----------
+
+     一个程序化「软箱」：顶上一大块主光、左冷右暖两块侧光、正前方一点补光、
+     地面给微弱反光。PMREMGenerator.fromScene 把它烘成**预滤波**环境贴图
+     （自带 mip 链：roughness 越高，采样越模糊的那一层），挂到 scene.environment
+     后所有 MeshStandardMaterial 自动吃它。
+
+     为什么非要这个：纸是粗糙的漫反射体，现实中它表面会「接住」周围一圈环境的
+     明暗过渡（顶部亮、底部暗、边缘有柔和的渐变）。只靠 Ambient + 平行光，
+     每个方向的亮度几乎一样 → 高光是干净的圆形亮斑 → 一眼塑料。
+     ❗ 不用外部 HDR：站点是纯静态托管，多一个 2MB 的 .hdr 不如现场烘一张。
+     ❗ scene.environment 只参与光照/反射，**不会**画出天空盒，透明背景照旧。 */
+  function buildEnv() {
+    const PM = THREE.PMREMGenerator;
+    if (!PM) return;
+    const pm = new PM(renderer);
+    const es = new THREE.Scene();
+    es.background = new THREE.Color(0x24282e);      // 暗底：没人照到的方向给深灰，别死黑
+    const made = [];
+    function panel(w, h, pos, inten, tint) {
+      const g = new THREE.PlaneGeometry(w, h);
+      const m = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(tint).multiplyScalar(inten),   // Color 允许 >1，烘进 HDR
+        side: THREE.DoubleSide
+      });
+      const mesh = new THREE.Mesh(g, m);
+      mesh.position.set(pos[0], pos[1], pos[2]);
+      mesh.lookAt(0, 0, 0);
+      es.add(mesh);
+      made.push(mesh);
+    }
+    panel(90, 90, [0, 70, 0], 2.4, 0xffffff);      // 顶部主光
+    panel(70, 80, [-60, 25, 30], 1.1, 0xdfeaff);   // 左侧冷光
+    panel(60, 70, [62, 12, -28], 1.35, 0xfff0da);  // 右侧暖光
+    panel(80, 50, [0, 8, 66], 0.55, 0xffffff);     // 正面补光（背光面不至于全黑）
+    panel(110, 110, [0, -70, 0], 0.22, 0x9aa3ae);  // 地面反光
+    /* 一条细长灯带：金/银卡这类金属纸全靠它在斜面上拉出一道亮光，
+       只给大块柔光的话，金属反射就是一片平色，看着像哑光漆 */
+    panel(16, 110, [-46, 52, 44], 5.0, 0xffffff);
+
+    const rt = pm.fromScene(es, 0.03);
+    scene.environment = rt.texture;
+    pm.dispose();
+    for (let i = 0; i < made.length; i++) {
+      made[i].geometry.dispose();
+      made[i].material.dispose();
+    }
+  }
+
+  /* ---------- 材质：表面纹理 / 瓦楞断面 / PBR ---------- */
 
   const texCache = {};
-  let curPaper = 'plain', curTint = null;
+  let curMat = 'auto', curTint = null;
 
   function paperTexture(file) {
     if (texCache[file]) return texCache[file];
@@ -541,15 +651,185 @@ export function create(host, onInfo, onPaper) {
     return t;
   }
 
-  /* 把当前纸种套到全部面板材质。
+  /* 可平铺的「值噪声」场：格点随机 + 双三次平滑插值。
+     自造而不下载贴图 —— 纸纤维的颗粒感必须能和 UV 平铺对齐（见 TEX_MM），
+     拿一张 512 的噪声图反而要额外传一个请求。 */
+  function noiseField(cells, seed) {
+    const g = new Float32Array(cells * cells);
+    let s = seed & 0x7fffffff;
+    for (let i = 0; i < g.length; i++) {
+      s = (s * 1103515245 + 12345) & 0x7fffffff;
+      g[i] = s / 0x7fffffff;
+    }
+    const S = 128, step = S / cells;
+    return function (x, y) {
+      const gx = x / step, gy = y / step;
+      const i0 = Math.floor(gx) % cells, j0 = Math.floor(gy) % cells;
+      const i1 = (i0 + 1) % cells, j1 = (j0 + 1) % cells;
+      const tx = gx - Math.floor(gx), ty = gy - Math.floor(gy);
+      const fx = tx * tx * (3 - 2 * tx), fy = ty * ty * (3 - 2 * ty);
+      const a = g[j0 * cells + i0], b = g[j0 * cells + i1];
+      const c = g[j1 * cells + i0], e = g[j1 * cells + i1];
+      return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + e * fx) * fy;
+    };
+  }
+
+  /* 纸面颗粒：同时当 bumpMap（掠射角的细微起伏）和 roughnessMap（高光不匀）。
+     ❗「塑料感」有一半来自这里 —— 现实纸面没有任何一块是绝对均匀的。 */
+  let grainTex = null;
+  function grainTexture() {
+    if (grainTex) return grainTex;
+    const S = 128, cv = document.createElement('canvas');
+    cv.width = cv.height = S;
+    const ctx = cv.getContext('2d');
+    const img = ctx.createImageData(S, S), d = img.data;
+    const f1 = noiseField(8, 7717), f2 = noiseField(32, 20291);
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        /* 0.62/0.38 ≈ 粗纹（纸浆团）+ 细纹（纤维）的比例 */
+        const v = 0.62 * f1(x, y) + 0.38 * f2(x, y);
+        const o = (y * S + x) * 4;
+        const c = 214 + Math.round(v * 41);       // 214..255，均值 ~0.92
+        d[o] = d[o + 1] = d[o + 2] = c; d[o + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    grainTex = new THREE.CanvasTexture(cv);
+    grainTex.wrapS = grainTex.wrapT = THREE.RepeatWrapping;
+    grainTex.anisotropy = 4;
+    return grainTex;
+  }
+
+  /* 白卡 / 灰板 / 原色纸板的底色贴图（站点没有这几张纸样，用噪声现场生成）：
+     白卡＝几乎纯白 + 极细纹；灰板＝回收纸浆的灰 + 深浅杂质点；
+     原色＝暖米棕的普通纸板，噪声稍重（默认材质，最常被看到）。 */
+  const procCache = {};
+  function procTexture(kind) {
+    if (procCache[kind]) return procCache[kind];
+    const S = 256, cv = document.createElement('canvas');
+    cv.width = cv.height = S;
+    const ctx = cv.getContext('2d');
+    const img = ctx.createImageData(S, S), d = img.data;
+    const f1 = noiseField(8, 4903), f2 = noiseField(32, 8123), f3 = noiseField(64, 3319);
+    const BASE = {
+      white: [246, 243, 235], grey: [186, 182, 173], board: [216, 190, 158]
+    };
+    const base = BASE[kind] || BASE.board;
+    const amp = kind === 'grey' ? 15 : (kind === 'board' ? 11 : 5);
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        let v = (0.55 * f1(x, y) + 0.30 * f2(x, y) + 0.15 * f3(x, y)) - 0.5;
+        /* 灰板夹杂：偶尔一块明显暗点（回收浆里的杂色纤维团） */
+        if (kind === 'grey' && f3(x, y) > 0.86) v -= 0.55;
+        const k = v * amp * (kind === 'grey' && v < 0 ? 1.8 : 1);
+        const o = (y * S + x) * 4;
+        d[o] = Math.max(0, Math.min(255, base[0] + k));
+        d[o + 1] = Math.max(0, Math.min(255, base[1] + k));
+        d[o + 2] = Math.max(0, Math.min(255, base[2] + k));
+        d[o + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(cv);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = 4;
+    if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
+    procCache[kind] = t;
+    return t;
+  }
+
+  /* 瓦楞断面：贴在「纸厚」挤出来的侧壁上，看到的是真实的多层结构
+     （面纸 / 波浪芯纸 / 里纸，双瓦两层芯）。
+     ❗贴图宽度代表 pitch×3 毫米，侧壁 u 就按「边长 ÷ 这个毫米数」算，
+        所以不管盒子多大，楞距都保持真实比例。 */
+  const fluteCache = {};
+  function fluteTexture(kind) {
+    if (fluteCache[kind]) return fluteCache[kind];
+    const f = FLUTE[kind] || FLUTE.B;
+    const mm = f.pitch * 3;                       // 一张贴图 = 3 个完整楞距（平铺无缝）
+    const W = 256, H = Math.max(8, Math.round(W * f.cal / mm));
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const g = cv.getContext('2d');
+    /* 三层：空隙（深）→ 面纸/里纸（浅）→ 芯纸波浪（中）。
+       真实断面就是「两条浅色纸面夹着牛皮色波浪芯」，中间的空隙是暗的，
+       顺序画反了（浅底 + 浅波浪）整块断面就会糊成一片白。 */
+    g.fillStyle = f.void; g.fillRect(0, 0, W, H);
+    const lp = Math.max(1, Math.round(H * 0.15));  // 面纸/里纸的厚度
+    g.fillStyle = f.liner;
+    g.fillRect(0, 0, W, lp); g.fillRect(0, H - lp, W, lp);
+
+    const px = W / 3;                              // 一个楞距的像素宽
+    /* 一条瓦楞纸芯：y 从 y0（顶）到 y1（底）按余弦起伏，x 方向 3 个周期 */
+    function core(y0, y1) {
+      g.beginPath();
+      for (let x = 0; x <= W; x++) {
+        const t = (x % px) / px;
+        const y = y0 + (y1 - y0) * (0.5 - 0.5 * Math.cos(Math.PI * 2 * t));
+        if (x) g.lineTo(x, y); else g.moveTo(x, y);
+      }
+      g.lineWidth = Math.max(1.4, H * 0.19);
+      g.strokeStyle = f.core;
+      g.lineJoin = 'round';
+      g.lineCap = 'round';
+      g.stroke();
+    }
+    if (!f.double) {
+      core(lp + g.lineWidth * 0.5, H - lp - g.lineWidth * 0.5);
+    } else {
+      /* 双瓦：上下各一层芯，中间夹一道隔纸（糊口） */
+      const mid = H * 0.5;
+      core(lp + g.lineWidth * 0.5, mid - g.lineWidth * 0.5);
+      core(mid + g.lineWidth * 0.5, H - lp - g.lineWidth * 0.5);
+      g.fillStyle = f.liner;
+      g.fillRect(0, mid - 1, W, 2);
+    }
+
+    const t = new THREE.CanvasTexture(cv);
+    t.wrapS = THREE.RepeatWrapping;
+    t.wrapT = THREE.ClampToEdgeWrapping;
+    t.anisotropy = 4;
+    if (THREE.SRGBColorSpace) t.colorSpace = THREE.SRGBColorSpace;
+    fluteCache[kind] = { tex: t, mm: mm };
+    return fluteCache[kind];
+  }
+
+  function matOf(k) {
+    for (let i = 0; i < MATS.length; i++) if (MATS[i].k === k) return MATS[i];
+    return MATS[0];
+  }
+
+  /* 把侧壁段的 UV 写进几何：u = 边长 ÷ 断面贴图宽度（mm），v = 0(外) → 1(内)。
+     ❗ 顶点序是「外皮 N + 内皮 N + 侧壁 4E」，侧壁段从第 2N 个顶点开始，
+        所以扁平下标从 N*4 起，每条边占 4 个顶点（8 个 float）。 */
+  function setSideUv(mesh, mm) {
+    const lens = mesh.userData.edgeLen;
+    if (!lens || !lens.length || !mm) return;
+    const attr = mesh.geometry.attributes.uv;
+    if (!attr) return;
+    const arr = attr.array, off = mesh.userData.N * 4;
+    if (arr.length < off + lens.length * 8) return;   // 图稿模式下长度够，保守判断
+    for (let e = 0; e < lens.length; e++) {
+      const u = lens[e] / mm, b = off + e * 8;
+      arr[b] = 0; arr[b + 1] = 0;
+      arr[b + 2] = u; arr[b + 3] = 0;
+      arr[b + 4] = u; arr[b + 5] = 1;
+      arr[b + 6] = 0; arr[b + 7] = 1;
+    }
+    attr.needsUpdate = true;
+  }
+
+  /* 把当前材质套到全部面板 + 内皮 + 侧壁（断面）。
      ❗ 不论贴图还是纯色，都按面板序号留一点明暗差 ——
      所有面完全同色时，折起来分不清哪块是哪块。 */
-  function applyPaper() {
+  function applyMaterial() {
     if (!mats.length) return;
-    let tex = null;
-    for (let d = 0; d < PAPERS.length; d++) {
-      if (PAPERS[d].k === curPaper && PAPERS[d].file) { tex = paperTexture(PAPERS[d].file); break; }
-    }
+    const M0 = matOf(curMat);
+    const tex = M0.file ? paperTexture(M0.file) : (M0.gen ? procTexture(M0.gen) : null);
+    const grain = grainTexture();
+    const fl = M0.flute ? fluteTexture(M0.flute) : null;
+    const tint = new THREE.Color(M0.tint == null ? 0xd8b184 : M0.tint);
+
     for (let i = 0; i < mats.length; i++) {
       const m = mats[i];
       const lvl = 1 - (i % 5) * 0.030;          // 0.88 ~ 1.00
@@ -562,15 +842,21 @@ export function create(host, onInfo, onPaper) {
         m.color.setScalar(lvl);                  // 压暗贴图，保留面的层次
       } else {
         m.map = null;
-        if (curTint) {
-          const c = new THREE.Color(curTint), h = { h: 0, s: 0, l: 0 };
-          c.getHSL(h);
-          m.color.setHSL(h.h, h.s, Math.max(0.06, Math.min(0.94, h.l * lvl)));
-        } else {
-          m.color.setHSL(0.09 + (i % 7) * 0.010, 0.30, 0.66 - (i % 5) * 0.030);
-        }
+        /* 无贴图：取材质基色（或自定义色），按面板序号错开一点明度 ——
+           原色纸板靠这条区分面，不然折起来一片同色 */
+        const h0 = { h: 0, s: 0, l: 0 };
+        (curTint ? new THREE.Color(curTint) : tint).getHSL(h0);
+        m.color.setHSL(h0.h, h0.s, Math.max(0.06, Math.min(0.94, h0.l * lvl)));
       }
+      /* PBR 三件套：粗糙度按材质给，金属度只有金/银卡才抬起，
+         环境贴图权重决定「有没有一圈柔和的环境反光」 */
+      m.roughness = M0.rough;
+      m.metalness = M0.metal;
+      m.envMapIntensity = M0.env;
+      m.bumpMap = grain;
+      m.bumpScale = (M0.bump || 0.4) * (artTex ? 0.12 : 0.44);
       m.needsUpdate = true;
+
       /* 内皮：不印图稿（盒内通常是空白或另一张图），保持纸色/纸纹，压暗一点点 */
       const mi = matsIn[i];
       if (mi) {
@@ -580,7 +866,31 @@ export function create(host, onInfo, onPaper) {
         } else {
           mi.color.setScalar(lvl * 0.82);
         }
+        mi.roughness = Math.min(1, M0.rough + 0.04);
+        mi.metalness = M0.metal;
+        mi.envMapIntensity = M0.env * 0.8;
+        mi.bumpMap = grain;
+        mi.bumpScale = (M0.bump || 0.4) * 0.44;
         mi.needsUpdate = true;
+      }
+
+      /* 侧壁（只有开「纸厚」时才存在）：瓦楞贴真断面，其它纸板就是纸边本色 */
+      const ms = matsSide[i];
+      if (ms) {
+        if (fl) {
+          ms.map = fl.tex;
+          ms.color.setScalar(1);
+          ms.roughness = 0.94;
+          setSideUv(meshes[i], fl.mm);
+        } else {
+          ms.map = null;
+          ms.color.copy(tint).multiplyScalar(0.86);
+          ms.roughness = 0.95;
+        }
+        ms.metalness = 0;
+        ms.envMapIntensity = fl ? 0.42 : 0.35;
+        ms.bumpMap = null;
+        ms.needsUpdate = true;
       }
     }
     if (renderer) render();
@@ -627,7 +937,7 @@ export function create(host, onInfo, onPaper) {
       const src = artTex ? artUV(p, ratio, mesh.userData.edges.length) : mesh.userData.uvT;
       mesh.geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(src), 2));
     }
-    applyPaper();
+    applyMaterial();
   }
 
   /**
@@ -687,37 +997,52 @@ export function create(host, onInfo, onPaper) {
 
   /* ---------- 「纸厚」按钮（HUD 里，纸种旁边） ---------- */
 
+  /* 材质自带的板厚覆盖（mm，0 = 不覆盖，用上游 ce 的值）。
+     选「瓦楞 B 楞」就该看到 2.5mm 的板 + 断面，这时候上游那 0.5mm 的卡纸值
+     会让断面薄得看不见。用户随后在参数面板改纸厚 → 上游值变 → 覆盖自动失效。 */
+  let matOver = 0;
+  let lastUpCal = -1;
+
   function mm(v) { return (Math.round((+v || 0) * 100) / 100).toString(); }
 
-  /** 按钮态与实际加厚都由这里统一刷（点按钮 / 上层推新数值都走它） */
+  /** 当前该用的视觉厚度：关掉纸厚就是 0；否则材质规格优先，其次上游参数 */
+  function refreshThick() {
+    if (!thickOn) { setThickness(0, 0, 0); syncThick(); return; }
+    if (matOver > 0.0001) setThickness(matOver, matOver * 0.5, matOver * 0.5);
+    else setThickness(thickSrc.cal, thickSrc.inner, thickSrc.outer);
+    syncThick();
+  }
+
+  /** 按钮态与实际加厚都由这里统一刷（点按钮 / 上层推新数值 / 选材质都走它） */
   function syncThick() {
-    const has = thickSrc.cal > 0.0001;
+    const has = thickSrc.cal > 0.0001 || matOver > 0.0001;
     const on = thickOn && has;
     thickBtn.classList.toggle('on', on);
     thickBtn.setAttribute('aria-pressed', String(on));
     thickBtn.disabled = !has;
+    const cal = matOver > 0.0001 ? matOver : thickSrc.cal;
     thickBtn.title = has
-      ? (on ? '关掉' : '显示') + '纸板厚度（' + mm(thickSrc.cal) + 'mm，内 ' + mm(thickSrc.inner)
-        + ' / 外 ' + mm(thickSrc.outer) + '；开关会被记住）'
+      ? (on ? '关掉' : '显示') + '纸板厚度（' + mm(cal) + 'mm · '
+        + (matOver > 0.0001 ? '纸张规格' : '盒型参数') + '；开关会被记住）'
       : '该盒型没有厚度数据';
   }
 
   /** 上层把上游算出来的厚度推过来（每次重算后都推一次）；开关由 3D 的「纸厚」按钮管 */
   function setThickData(cal, inner, outer) {
-    thickSrc = { cal: +cal || 0, inner: +inner || 0, outer: +outer || 0 };
-    if (thickOn && thickSrc.cal > 0.0001) setThickness(thickSrc.cal, thickSrc.inner, thickSrc.outer);
-    else setThickness(0, 0, 0);
-    syncThick();
-    return { on: thickOn, cal: thickSrc.cal, inner: thickSrc.inner, outer: thickSrc.outer };
+    const c = +cal || 0;
+    /* 上游纸厚变了 = 用户在参数面板动过 → 材质规格让位，否则改了参数界面却没反应 */
+    if (lastUpCal >= 0 && Math.abs(c - lastUpCal) > 1e-4) matOver = 0;
+    lastUpCal = c;
+    thickSrc = { cal: c, inner: +inner || 0, outer: +outer || 0 };
+    refreshThick();
+    return { on: thickOn, cal: matOver > 0.0001 ? matOver : thickSrc.cal, inner: thickSrc.inner, outer: thickSrc.outer };
   }
 
   /** 开 / 关（不传参取反）；选择写进本地记忆，下次进 3D 沿用 */
   function setThick(on) {
     thickOn = (on == null) ? !thickOn : !!on;
     try { localStorage.setItem(THICK_KEY, thickOn ? '1' : '0'); } catch (e) { /* 隐私模式忽略 */ }
-    if (thickOn && thickSrc.cal > 0.0001) setThickness(thickSrc.cal, thickSrc.inner, thickSrc.outer);
-    else setThickness(0, 0, 0);
-    syncThick();
+    refreshThick();
     return thickOn;
   }
 
@@ -806,6 +1131,15 @@ export function create(host, onInfo, onPaper) {
         }
       }
 
+      /* 侧壁 UV：u 沿边的长度（mm）、v 沿板厚（0=外皮 1=内皮）。
+         这里只算「边长」存起来，真正写进 uv 要等材质定了才知道断面贴图多宽
+         （E 楞 3 个楞距 9.6mm、C 楞 24mm，除错了楞距就失真）——见 setSideUv。 */
+      const edgeLen = new Float32Array(E);
+      for (let e = 0; e < E; e++) {
+        const a = edges[e][0], b = edges[e][1];
+        edgeLen[e] = Math.hypot(p.v[a * 2] - p.v[b * 2], p.v[a * 2 + 1] - p.v[b * 2 + 1]);
+      }
+
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(VN * 3), 3));
       geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(uvT), 2));
@@ -861,6 +1195,7 @@ export function create(host, onInfo, onPaper) {
       mesh.userData.on = on;
       mesh.userData.uvT = uvT;                    // 平铺 UV（纸纹）
       mesh.userData.uvN = uvN;                    // 归一化 UV（图稿，contain 时会重算）
+      mesh.userData.edgeLen = edgeLen;            // 每条轮廓边的长度（mm），侧壁 UV 用
       mesh.frustumCulled = false;   // 顶点每帧都在动，交给引擎算包围球不如直接不过滤
       group.add(mesh);
       meshes.push(mesh); mats.push(matOut);
@@ -872,7 +1207,7 @@ export function create(host, onInfo, onPaper) {
     applyProgress(1, true);
     fitCamera();
     geoNormalsOnce();
-    applyPaper();                   // 重建后把当前纸种贴回去
+    applyMaterial();                   // 重建后把当前纸种贴回去
     applyArt();                     // 重建后把图稿贴回去
   }
 
@@ -1136,17 +1471,23 @@ export function create(host, onInfo, onPaper) {
     playBtn.classList.remove('on');
   }
 
-  /* ---------- 纸种浮层 ---------- */
+  /* ---------- 纸张材质浮层（纸板 / 彩纸 两组） ---------- */
 
+  function swHtml(m) {
+    const bg = m.file ? 'background-image:url(' + MAT_BASE + m.file + ')' : 'background:' + m.sw;
+    return '<button type="button" class="v3d-sw" data-k="' + m.k + '" title="' + m.name + '"'
+      + ' style="' + bg + '">' + (m.lab ? '<b>' + m.lab + '</b>' : '') + '</button>';
+  }
+  function grpHtml(title, grp) {
+    return '<div class="v3d-paper-grp">' + title + '</div>' +
+      '<div class="v3d-paper-grid">' +
+      MATS.filter(function (m) { return m.grp === grp; }).map(swHtml).join('') +
+      '</div>';
+  }
   paperPop.innerHTML =
-    '<div class="v3d-paper-hd">纸张材质<em>7 种纸样</em></div>' +
-    '<div class="v3d-paper-grid">' +
-      PAPERS.map(function (p) {
-        return '<button type="button" class="v3d-sw" data-k="' + p.k + '" title="' + p.name + '"'
-          + (p.file ? ' style="background-image:url(' + MAT_BASE + p.file + ')"' : '') + '>'
-          + (p.file ? '' : '<i></i>') + '</button>';
-      }).join('') +
-    '</div>' +
+    '<div class="v3d-paper-hd">纸张材质<em>15 种</em></div>' +
+    grpHtml('纸板 / 瓦楞', 'board') +
+    grpHtml('彩纸 / 特种纸', 'deco') +
     '<label class="v3d-paper-ct"><input type="color" value="#c8a273"><span>自定义颜色</span></label>';
 
   /* 选中态由这里统一刷（点色块 / 取色器 / 上层恢复记忆都走它） */
@@ -1199,20 +1540,38 @@ export function create(host, onInfo, onPaper) {
     info: function () { return info; },
 
     /**
-     * 纸种 / 颜色
-     * @param k 'plain' 纸板原色 | 'wa'|'niu'|'jin'|'yin'|'qing'|'pink'|'red' 预设纸 | '#rrggbb' 自定义色
+     * 纸张材质 / 颜色
+     * @param k 'auto' 原色纸板 | 'sbs03'|'sbs05'|'kraft04'|'grey10' 卡纸/纸板
+     *          | 'fluteE'|'fluteB'|'fluteC'|'fluteEB'|'fluteBC' 瓦楞
+     *          | 'jin'|'yin'|'qing'|'pink'|'red' 彩纸 | '#rrggbb' 自定义色
+     *          旧版本的 'plain'/'wa'/'niu' 等 key 会经 MAT_ALIAS 自动升级。
      * 传色值时忽略第 2 参。
      */
     setPaper: function (k, tint) {
-      if (k && k.charAt(0) === '#') { curPaper = 'plain'; curTint = k; }
-      else { curPaper = k || 'plain'; curTint = tint || null; }
-      applyPaper();
+      if (k && k.charAt(0) === '#') {
+        curMat = 'auto'; curTint = k; matOver = 0;
+      } else {
+        let key = k || 'auto';
+        if (MAT_ALIAS[key]) key = MAT_ALIAS[key];
+        if (!matOf(key) || matOf(key).k !== key) key = 'auto';
+        curMat = key; curTint = tint || null;
+        /* 纸板规格自带厚度：选瓦楞却还按 0.3mm 显示，断面就只剩一条线 */
+        matOver = matOf(key).cal || 0;
+        if (matOver > 0.0001 && !thickOn) {
+          thickOn = true;
+          try { localStorage.setItem(THICK_KEY, '1'); } catch (e) { /* 隐私模式忽略 */ }
+        }
+      }
+      refreshThick();          // 先定厚度（可能要重建几何），再套材质
+      applyMaterial();
       syncSw();
       return api;
     },
-    paper: function () { return curTint || curPaper; },
+    paper: function () { return curTint || curMat; },
     papers: function () {
-      return PAPERS.map(function (p) { return { k: p.k, name: p.name, file: p.file || null }; });
+      return MATS.map(function (m) {
+        return { k: m.k, name: m.name, grp: m.grp, cal: m.cal || 0, file: m.file || null };
+      });
     },
 
     /* 视觉加厚：按上游 ce 的 cal/inner/outer（mm）把零厚度曲面挤成薄板。
