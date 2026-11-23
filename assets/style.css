@@ -1158,3 +1158,31 @@ button, input, select { font-family: inherit; font-size: inherit; color: inherit
   color: var(--muted);
   line-height: 1.4;
 }
+/* 支持者名单：与上面用一条细线隔开，名字做成 chip 顺着「支持者：」往后排。
+   ❗ 这里不能用 flex：名字列表是个 span，一旦被 flex 当成整块 item，
+   名字一多整块会换到下一行，「支持者：」就独占一行了。用行内流式才对。 */
+.reward-donors {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  text-align: left;
+  font-size: 11.5px;
+  line-height: 1.9;
+}
+.reward-donors[hidden] { display: none; }
+.reward-donors-lab { color: var(--muted); }
+.reward-chip {
+  display: inline-block;
+  padding: 0 6px;
+  margin-left: 3px;
+  border-radius: 999px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  white-space: nowrap;
+  line-height: 1.55;
+  max-width: 100%;              /* 超长昵称截断，别把弹层撑破 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
+}

@@ -1155,12 +1155,30 @@
       });
     }
 
+    /* ===== 打赏支持者名单 =====
+       加人只改这一行：按时间倒序（最新的排前面）。
+       ❗ 名字里的 * 是平台脱敏，原样保留，不要补全成真名。
+       数组为空时，弹层里「支持者：」整块不显示。 */
+    var DONORS = ['*貅'];
+
     /* 打赏：桌面 hover 也能弹；这里再加「点按/触屏点按」开关，移动端无 hover 也能用。
        点外面或按 Esc 关；长按 400ms 也打开（防误触、兼容触屏长按习惯）。 */
     var rewardWrap = document.querySelector('.reward-wrap');
     var rewardBtn = rewardWrap && rewardWrap.querySelector('.btn-reward');
     var rewardPop = rewardWrap && rewardWrap.querySelector('.reward-pop');
     if (rewardWrap && rewardBtn && rewardPop) {
+      /* 名单渲染：名字一律走 textContent，名字里有 < > & 也不会破结构 */
+      var donorBox = rewardPop.querySelector('.reward-donors');
+      var donorList = rewardPop.querySelector('.reward-donors-list');
+      if (donorBox && donorList && DONORS.length) {
+        for (var di = 0; di < DONORS.length; di++) {
+          var chip = document.createElement('span');
+          chip.className = 'reward-chip';
+          chip.textContent = DONORS[di];
+          donorList.appendChild(chip);
+        }
+        donorBox.hidden = false;
+      }
       var isRewardOpen = function () { return rewardWrap.classList.contains('open'); };
       var setRewardOpen = function (on) {
         rewardWrap.classList.toggle('open', on);
