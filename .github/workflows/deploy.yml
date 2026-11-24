@@ -21,10 +21,15 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      # 2026-11-24 升版：原来 checkout@v4 / configure-pages@v5 /
+      # upload-pages-artifact@v3 / deploy-pages@v4 全是 Node 20 时代的版本，
+      # 被 runner 强制跑在 Node 24 上，deploy-pages 会报
+      # 「No artifacts named "github-pages" were found for this workflow run」
+      # （产物明明上传成功，只是元数据 API 对不上）。
+      - uses: actions/checkout@v5
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: '.'
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
