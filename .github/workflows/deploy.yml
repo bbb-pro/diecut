@@ -36,5 +36,10 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: '.'
+      # 2026-11-24：产物上传成功（API 里能查到 github-pages，24.8 MB、未过期），
+      # 但紧接着的 deploy-pages 查元数据返回空 —— 索引有写入延迟。
+      # 这里留一段缓冲，别让发布跑在索引前面。
+      - name: 等产物索引就绪
+        run: sleep 30
       - id: deployment
         uses: actions/deploy-pages@v5
