@@ -27,7 +27,7 @@
 <meta name="twitter:card" content="summary">
 <!-- 订阅源用根站 /atom.xml（本站不单独发 feed）；全站 GEO 资产在根站，这里只接入 -->
 <link rel="alternate" type="application/atom+xml" title="包装&amp;物流工具箱" href="https://057300.xyz/atom.xml">
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"通用包装盒型库","url":"https://057300.xyz/diecut/","applicationCategory":"DesignApplication","operatingSystem":"Web Browser","inLanguage":"zh-CN","dateModified":"2026-10-29","author":{"@type":"Person","name":"星辰月光酿大树"},"publisher":{"@id":"https://057300.xyz/#org"},"isPartOf":{"@id":"https://057300.xyz/diecut/#website"},"isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"CNY"},"featureList":["1298 个标准盒型刀模展开图","制造尺寸 / 内尺寸 / 外尺寸三口径对照","在线改尺寸实时重算刀模几何","导出 SVG / DXF / PDF / PNG"],"description":"内置 1298 种包装盒型刀模展开图，支持制造/内/外三口径尺寸对照、参数化重算，可导出 SVG / DXF / PDF / PNG。"}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"通用包装盒型库","url":"https://057300.xyz/diecut/","applicationCategory":"DesignApplication","operatingSystem":"Web Browser","inLanguage":"zh-CN","dateModified":"2026-11-24","author":{"@type":"Person","name":"星辰月光酿大树"},"publisher":{"@id":"https://057300.xyz/#org"},"isPartOf":{"@id":"https://057300.xyz/diecut/#website"},"isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"CNY"},"featureList":["1298 个标准盒型刀模展开图","制造尺寸 / 内尺寸 / 外尺寸三口径对照","在线改尺寸实时重算刀模几何","导出 SVG / DXF / PDF / PNG"],"description":"内置 1298 种包装盒型刀模展开图，支持制造/内/外三口径尺寸对照、参数化重算，可导出 SVG / DXF / PDF / PNG。"}</script>
 <!-- GEO：站点实体。本站是 057300.xyz「包装&物流工具箱」的子工具 —— Organization 用根站 @id
      （与根站 /ai/service.json 里那条 name+url 对应），全站级 llms.txt / ai.json / about / atom
      都在根站，这里只引用不重复造。dateModified 请在改版时手动更新。 -->
@@ -59,16 +59,81 @@ s.parentNode.insertBefore(hm, s);
   .sug:hover { background: var(--accent-weak); }
   .sug b { font-weight: 600; font-size: 13px; }
   .sug span { font-size: 11.5px; color: var(--muted); margin-left: auto; font-family: ui-monospace, Menlo, monospace; }
-  /* 列表页底部的静态说明（不依赖 JS，供搜索引擎与 AI 爬虫读取） */
-  .geo-intro { max-width: 860px; margin: 34px 0 10px; padding-top: 24px; border-top: 1px solid var(--border); }
-  .geo-intro h2 { font-size: 15.5px; margin: 22px 0 8px; }
-  .geo-intro h2:first-child { margin-top: 0; }
-  .geo-intro p { font-size: 13.5px; line-height: 1.9; margin: 0 0 10px; color: #3d4552; }
-  .geo-intro dl { margin: 0; }
-  .geo-intro dt { font-size: 13.5px; font-weight: 600; margin-top: 16px; color: #1b2230; }
-  .geo-intro dd { font-size: 13.5px; line-height: 1.85; margin: 5px 0 0; color: #3d4552; }
-  .geo-intro b { color: #1b2230; }
-  .geo-updated { margin-top: 20px; font-size: 12.5px; color: var(--muted, #8a93a3); }
+  /* 顶部两栏：关于本站 / 常见问题（原页尾静态说明区上移并重排）
+     ❗ 这块正文不依赖 JS，是搜索引擎与 AI 爬虫能读到的主体内容，
+     所以 FAQ 用 <details> 折叠 —— 文本仍在 DOM 里，只是视觉上收起。 */
+  .intro-band {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.06fr);
+    gap: 16px;
+    margin: 0 0 22px;
+  }
+  .intro-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px 20px 15px;
+    box-shadow: var(--shadow);
+  }
+  /* 卡片本身是 <details>：桌面默认展开，窄屏由脚本收起（见 body 末尾），
+     正文始终留在 HTML 里，爬虫读到的仍是完整内容。 */
+  .intro-card > summary {
+    display: flex; align-items: center; gap: 8px;
+    margin: 0 0 11px; cursor: pointer; list-style: none;
+  }
+  .intro-card > summary::-webkit-details-marker { display: none; }
+  .intro-card > summary::after {
+    content: ''; margin-left: auto; flex: none; margin-right: 4px;
+    width: 6px; height: 6px; border-right: 1.6px solid #b3bac6; border-bottom: 1.6px solid #b3bac6;
+    transform: rotate(45deg) translateY(-1px); transition: transform .15s;
+  }
+  .intro-card[open] > summary::after { transform: rotate(-135deg) translateY(-1px); }
+  .intro-card > summary:hover h2 { color: var(--accent); }
+  .intro-card:not([open]) { padding-bottom: 17px; align-self: start; }
+  .intro-card:not([open]) > summary { margin-bottom: 0; }
+  .intro-card h2 {
+    display: flex; align-items: center; gap: 8px;
+    margin: 0; font-size: 15px;
+  }
+  .intro-card h2::before {
+    content: ''; flex: none; width: 3px; height: 13px; border-radius: 2px; background: var(--accent);
+  }
+  .intro-card p { margin: 0 0 11px; font-size: 13px; line-height: 1.85; color: #3d4552; }
+  .intro-card b { color: #1b2230; font-weight: 600; }
+  /* 「怎么用」三条：短标题 + 一句补充，比原来的大段散文好扫 */
+  .intro-steps { list-style: none; margin: 0 0 13px; padding: 0; display: grid; gap: 9px; }
+  .intro-steps li { position: relative; padding-left: 15px; font-size: 12.5px; line-height: 1.78; color: #4b5563; }
+  .intro-steps li::before {
+    content: attr(data-n); position: absolute; left: 0; top: 1px;
+    font-size: 10.5px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums;
+  }
+  .intro-steps b { display: block; font-size: 13px; margin-bottom: 1px; }
+  .intro-meta {
+    margin: 0 !important; padding-top: 11px; border-top: 1px solid var(--border);
+    font-size: 12px !important; line-height: 1.8 !important; color: var(--muted) !important;
+  }
+  .intro-meta a { color: var(--accent); }
+  .intro-meta a:hover { text-decoration: underline; }
+  .intro-updated { display: block; margin-top: 3px; color: #9aa2b1; }
+  /* FAQ 折叠条：收起时只占一行，文本仍在 HTML 里 */
+  .faq { border-top: 1px solid var(--border); }
+  .faq:first-of-type { border-top: 0; }
+  .faq summary {
+    display: flex; gap: 8px; align-items: flex-start;
+    padding: 9px 0; cursor: pointer; list-style: none;
+    font-size: 13px; font-weight: 600; line-height: 1.55; color: #1b2230;
+  }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary:hover { color: var(--accent); }
+  .faq summary::after {
+    content: '＋'; margin-left: auto; flex: none; font-size: 12px; font-weight: 400; color: var(--muted);
+  }
+  .faq[open] summary::after { content: '－'; }
+  .faq p { margin: 0; padding: 0 0 11px; font-size: 12.5px; line-height: 1.8; color: #4b5563; }
+  @media (max-width: 900px) {
+    .intro-band { grid-template-columns: 1fr; gap: 12px; }
+    .intro-card { padding: 16px 16px 13px; }
+  }
 </style>
 <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1124987147181210"
 crossorigin="anonymous"></script>
@@ -108,41 +173,50 @@ crossorigin="anonymous"></script>
       </div>
     </div>
 
+    <!-- 静态说明区：给搜索引擎 / AI 爬虫的可读正文（列表本身由 JS 渲染）。
+         2026-11-24 从页尾上移到首屏下方，拆成「关于本站」「常见问题」两栏。 -->
+    <section class="intro-band">
+      <details class="intro-card" open data-m-collapse>
+        <summary><h2>关于本站</h2></summary>
+        <p>「通用包装盒型库」收录 <b>1298 个标准纸盒盒型</b>、<b>21 个结构分类</b>，覆盖管式盒、天地盖、翻盖盒、抽屉盒、礼盒精品盒、异形盒等常见包装结构。每个盒型都按默认参数算好刀模展开图：<b>实线为切割线、虚线为压痕线</b>，图上标注主尺寸、结构参数与展开外框，单位为毫米。</p>
+        <ul class="intro-steps">
+          <li data-n="1"><b>挑盒型</b>左侧按结构分类筛选，或直接搜名称 / 编号 / 用途。</li>
+          <li data-n="2"><b>改尺寸</b>参数可改，刀模几何实时重算，越界取值按实际值回填。</li>
+          <li data-n="3"><b>导出打样</b>SVG / DXF / PDF（1:1 打印）/ PNG，无需登录。</li>
+        </ul>
+        <p class="intro-meta">本工具是 <a href="https://057300.xyz/" rel="noopener">包装&amp;物流工具箱</a> 的一员，同站还有集装箱装柜测算、条码标签设计与 Markdown 编辑。维护者与联系方式见 <a href="https://057300.xyz/about/" rel="noopener">站点关于页</a>。
+          <span class="intro-updated">最后更新 <time datetime="2026-11-24">2026 年 11 月 24 日</time> · 内容基于 1298 个标准盒型的真实刀模几何数据</span></p>
+      </details>
+      <details class="intro-card" open>
+        <summary><h2>常见问题</h2></summary>
+        <details class="faq" open>
+          <summary>刀模展开图可以直接用于生产吗？</summary>
+          <p>可以用于打样与制版。展开图以毫米为单位，实线为切割线、虚线为压痕线，可导出 DXF（R12 多段线）、SVG、PDF（1:1 打印）、PNG。实际上机前建议按所用纸板厚度与设备刀缝做一次补偿微调。</p>
+        </details>
+        <details class="faq">
+          <summary>制造尺寸、内尺寸、外尺寸有什么区别？</summary>
+          <p>制造尺寸是刀模线所在的位置（中性层），内尺寸等于制造尺寸减去两侧向内偏移量，外尺寸等于制造尺寸加上两侧向外偏移量。纸板越厚三者差距越大：1 mm 灰板相差约 2 mm，3 mm 瓦楞可达 6 mm 以上。切换口径只影响读数与标注，不改变刀模几何。</p>
+        </details>
+        <details class="faq">
+          <summary>改尺寸后刀模会重新计算吗？</summary>
+          <p>会。修改主尺寸或任一结构参数都会重新求解整张刀模的几何，而不是等比缩放——插舌长度、防尘翼宽度、折角等会按盒型规则连带调整；越界取值会被钳到该盒型允许的边界并回填显示实际值。</p>
+        </details>
+        <details class="faq">
+          <summary>可以导出哪些文件格式？</summary>
+          <p>SVG（矢量，可继续编辑）、DXF（R12 多段线，兼容 AutoCAD 与割样机）、PDF（按 1:1 打印）、PNG（位图预览）。导出默认跟随屏幕上的标注开关；DXF 只包含刀模线，不带标注。</p>
+        </details>
+        <details class="faq">
+          <summary>使用需要注册或付费吗？</summary>
+          <p>不需要。全部 1298 个盒型、尺寸换算与格式导出均可直接使用，无需登录，也不限制导出次数。</p>
+        </details>
+      </details>
+    </section>
+
     <div class="grid" id="grid">
       <div class="empty" style="grid-column:1/-1"><b>正在加载…</b>首次加载约 0.5 MB</div>
     </div>
   </main>
 </div>
-
-<!-- 静态说明区：给搜索引擎 / AI 爬虫的可读正文（列表本身由 JS 渲染） -->
-<section class="geo-intro">
-  <h2>这个盒型库提供什么</h2>
-  <p>通用包装盒型库收录 <b>1298 个标准纸盒盒型</b>、<b>21 个结构分类</b>，覆盖管式盒、天地盖、翻盖盒、抽屉盒、礼盒精品盒、异形盒等常见包装结构。每个盒型都给出按默认参数算好的刀模展开图：<b>实线为切割线、虚线为压痕线</b>，图上标注主尺寸（橙色）、其他结构参数（绿色）与展开外框尺寸（宽 × 高，单位 mm）。</p>
-  <p>展开图按生产制图的习惯以毫米为单位，包含齿刀撕拉线、压痕线与切口位置，可直接用于排版打样；需要调整时进入设计器修改参数，几何会重新求解。</p>
-
-  <h2>制造尺寸、内尺寸、外尺寸的区别</h2>
-  <p>同一只盒子有三个口径：<b>制造尺寸</b>是刀模线所在的位置（中性层），<b>内尺寸</b>等于制造尺寸减去两侧向内偏移量，<b>外尺寸</b>等于制造尺寸加上两侧向外偏移量。纸板越厚三者差距越大——1 mm 灰板相差约 2 mm，3 mm 瓦楞可达 6 mm 以上。本站默认按制造尺寸出图，切换口径只改变读数与标注，不改变刀模几何。</p>
-
-  <h2>改尺寸会重新算刀模吗</h2>
-  <p>会。修改主尺寸或任一结构参数时，系统会重新求解整张刀模的几何，而不是把图等比放大——插舌长度、防尘翼宽度、折角角度可能按该盒型的规则连带变化。取值范围由盒型本身约束：填入越界数值不会报错，而是被钳到边界并按实际值回填显示。</p>
-  <p>导出支持 <b>4 种格式</b>：SVG（矢量，可继续编辑）、DXF（R12 多段线，兼容 AutoCAD 与割样机）、PDF（按 1:1 打印）、PNG（位图预览）。导出默认跟随屏幕上的标注开关，DXF 只含刀模线、不带标注。</p>
-
-  <h2>常见问题</h2>
-  <dl>
-    <dt>刀模展开图可以直接用于生产吗？</dt>
-    <dd>可以用于打样与制版。展开图以毫米为单位，实线为切割线、虚线为压痕线，可导出 DXF（R12 多段线）、SVG、PDF（1:1 打印）、PNG。实际上机前建议按所用纸板厚度与设备刀缝做一次补偿微调。</dd>
-    <dt>制造尺寸、内尺寸、外尺寸有什么区别？</dt>
-    <dd>制造尺寸是刀模线所在的位置（中性层），内尺寸等于制造尺寸减去两侧向内偏移量，外尺寸等于制造尺寸加上两侧向外偏移量。纸板越厚三者差距越大：1 mm 灰板相差约 2 mm，3 mm 瓦楞可达 6 mm 以上。切换口径只影响读数与标注，不改变刀模几何。</dd>
-    <dt>改尺寸后刀模会重新计算吗？</dt>
-    <dd>会。修改主尺寸或任一结构参数都会重新求解整张刀模的几何，而不是等比缩放——插舌长度、防尘翼宽度、折角等会按盒型规则连带调整；越界取值会被钳到该盒型允许的边界并回填显示实际值。</dd>
-    <dt>可以导出哪些文件格式？</dt>
-    <dd>SVG（矢量，可继续编辑）、DXF（R12 多段线，兼容 AutoCAD 与割样机）、PDF（按 1:1 打印）、PNG（位图预览）。导出默认跟随屏幕上的标注开关；DXF 只包含刀模线，不带标注。</dd>
-    <dt>使用需要注册或付费吗？</dt>
-    <dd>不需要。全部 1298 个盒型、尺寸换算与格式导出均可直接使用，无需登录，也不限制导出次数。</dd>
-  </dl>
-  <p>本工具是 <a href="https://057300.xyz/" rel="noopener">包装&amp;物流工具箱</a> 的一员，同站还有集装箱装柜测算、条码标签设计与 Markdown 编辑工具。维护者与联系方式见 <a href="https://057300.xyz/about/" rel="noopener">关于本站</a>。</p>
-  <p class="geo-updated">最后更新：<time datetime="2026-10-29">2026 年 10 月 29 日</time> · 内容基于 1298 个标准盒型的真实刀模几何数据</p>
-</section>
 
 <!-- 刀模 hover 预览（盒型参考图）：展开图 + 立体盒 -->
 <div class="hvp" id="hvp" hidden>
@@ -154,6 +228,15 @@ crossorigin="anonymous"></script>
   <div class="hvp-cap"><b id="hvpId">—</b><span id="hvpName"></span><i id="hvpDim"></i></div>
 </div>
 
+<script>
+/* 窄屏把「关于本站」折起来：桌面照旧全展开，手机上一屏内就能看到盒型。
+   正文始终在 HTML 里（卡片是 <details open>），不靠这段脚本也能被读到。 */
+(function () {
+  if (!window.matchMedia || !window.matchMedia('(max-width: 640px)').matches) return;
+  var els = document.querySelectorAll('.intro-card[data-m-collapse][open]');
+  for (var i = 0; i < els.length; i++) els[i].removeAttribute('open');
+})();
+</script>
 <script src="assets/common.js?v=45e937faf8"></script>
 <script src="assets/list.js?v=45e937faf8"></script>
 </body>

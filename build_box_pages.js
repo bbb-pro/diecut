@@ -433,6 +433,7 @@ function syncIndexCounts(total, cateCount) {
     [/(\d+)(\s*个专业包装盒型刀模展开图)/g, (m, d, tail) => total + tail],   // description、og:description
     [/(\d+)(\s*种包装盒型刀模展开图)/g, (m, d, tail) => total + tail],       // ld+json
     [/(\d+)(\s*个分类)/g, (m, d, tail) => cateCount + tail],                 // description 里的分类数
+    [/(\d+)(\s*个结构分类)/g, (m, d, tail) => cateCount + tail],             // 2026-11-24 首屏「关于本站」正文
     /* 2026-11-06 补：手写正文 / FAQ / featureList 里的同义句式。
        原先只回写头部，正文那几处（含 FAQPage 的 acceptedAnswer，必须与可见文本逐字一致）
        会随上游增减盒型慢慢漂掉。 */
