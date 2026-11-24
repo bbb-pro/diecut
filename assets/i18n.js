@@ -30,7 +30,7 @@
     '打赏收款二维码': 'Tip QR code',
     '扫码打赏 · 感谢支持': 'Scan to tip · thank you',
     /* 支持者名单：只译标签，名字（含脱敏的 * ）保持原样 */
-    '支持者：': 'Supporters: ',
+    '支持者：': 'Donators: ',
     '导出下载': 'Export',
     '导出刀模图：SVG / DXF / PDF / PNG': 'Export the die-cut drawing: SVG / DXF / PDF / PNG',
     '导出格式': 'Export format',
