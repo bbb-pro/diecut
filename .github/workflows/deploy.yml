@@ -7,6 +7,11 @@ on:
 
 permissions:
   contents: read
+  # deploy-pages 要先列本次运行的 github-pages 产物再发布。
+  # 显式写 permissions 时未列出的权限一律为 none —— 少了 actions: read，
+  # 产物明明上传成功（24.8 MB，名字对、没过期），它仍报
+  # 「No artifacts named "github-pages" were found for this workflow run」。
+  actions: read
   pages: write
   id-token: write
 
