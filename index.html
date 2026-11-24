@@ -59,14 +59,16 @@ s.parentNode.insertBefore(hm, s);
   .sug:hover { background: var(--accent-weak); }
   .sug b { font-weight: 600; font-size: 13px; }
   .sug span { font-size: 11.5px; color: var(--muted); margin-left: auto; font-family: ui-monospace, Menlo, monospace; }
-  /* 顶部两栏：关于本站 / 常见问题（原页尾静态说明区上移并重排）
+  /* 页尾两栏：关于本站 / 常见问题（原页尾长文的去重重排，位置仍在列表下方）
      ❗ 这块正文不依赖 JS，是搜索引擎与 AI 爬虫能读到的主体内容，
      所以 FAQ 用 <details> 折叠 —— 文本仍在 DOM 里，只是视觉上收起。 */
   .intro-band {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.06fr);
     gap: 16px;
-    margin: 0 0 22px;
+    margin: 40px 0 6px;
+    padding-top: 26px;
+    border-top: 1px solid var(--border);
   }
   .intro-card {
     background: var(--surface);
@@ -75,7 +77,7 @@ s.parentNode.insertBefore(hm, s);
     padding: 18px 20px 15px;
     box-shadow: var(--shadow);
   }
-  /* 卡片本身是 <details>：桌面默认展开，窄屏由脚本收起（见 body 末尾），
+  /* 卡片本身是 <details>：默认展开，读者可自行收起。
      正文始终留在 HTML 里，爬虫读到的仍是完整内容。 */
   .intro-card > summary {
     display: flex; align-items: center; gap: 8px;
@@ -173,10 +175,14 @@ crossorigin="anonymous"></script>
       </div>
     </div>
 
+    <div class="grid" id="grid">
+      <div class="empty" style="grid-column:1/-1"><b>正在加载…</b>首次加载约 0.5 MB</div>
+    </div>
+
     <!-- 静态说明区：给搜索引擎 / AI 爬虫的可读正文（列表本身由 JS 渲染）。
-         2026-11-24 从页尾上移到首屏下方，拆成「关于本站」「常见问题」两栏。 -->
+         2026-11-24 重排为「关于本站」「常见问题」两栏卡片，位置仍在列表下方的页尾。 -->
     <section class="intro-band">
-      <details class="intro-card" open data-m-collapse>
+      <details class="intro-card" open>
         <summary><h2>关于本站</h2></summary>
         <p>「通用包装盒型库」收录 <b>1298 个标准纸盒盒型</b>、<b>21 个结构分类</b>，覆盖管式盒、天地盖、翻盖盒、抽屉盒、礼盒精品盒、异形盒等常见包装结构。每个盒型都按默认参数算好刀模展开图：<b>实线为切割线、虚线为压痕线</b>，图上标注主尺寸、结构参数与展开外框，单位为毫米。</p>
         <ul class="intro-steps">
@@ -211,10 +217,6 @@ crossorigin="anonymous"></script>
         </details>
       </details>
     </section>
-
-    <div class="grid" id="grid">
-      <div class="empty" style="grid-column:1/-1"><b>正在加载…</b>首次加载约 0.5 MB</div>
-    </div>
   </main>
 </div>
 
@@ -228,15 +230,6 @@ crossorigin="anonymous"></script>
   <div class="hvp-cap"><b id="hvpId">—</b><span id="hvpName"></span><i id="hvpDim"></i></div>
 </div>
 
-<script>
-/* 窄屏把「关于本站」折起来：桌面照旧全展开，手机上一屏内就能看到盒型。
-   正文始终在 HTML 里（卡片是 <details open>），不靠这段脚本也能被读到。 */
-(function () {
-  if (!window.matchMedia || !window.matchMedia('(max-width: 640px)').matches) return;
-  var els = document.querySelectorAll('.intro-card[data-m-collapse][open]');
-  for (var i = 0; i < els.length; i++) els[i].removeAttribute('open');
-})();
-</script>
 <script src="assets/common.js?v=45e937faf8"></script>
 <script src="assets/list.js?v=45e937faf8"></script>
 </body>
