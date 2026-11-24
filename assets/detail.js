@@ -1416,6 +1416,24 @@
             var p2 = [];
             for (var j = 2; j < e.length; j += 2) p2.push([e[j] + ax, e[j + 1] + ay]);
             if (p2.length >= 2) dst.push(p2);
+          } else if (e[0] === 3) {
+            /* 三次贝塞尔：[3, style, x0,y0, c1x,c1y, c2x,c2y, x1,y1]
+               改参数后重算走的是这条链路，漏了它曲线段会凭空消失。 */
+            var q0 = [e[2] + ax, e[3] + ay], k1 = [e[4] + ax, e[5] + ay];
+            var k2 = [e[6] + ax, e[7] + ay], q1 = [e[8] + ax, e[9] + ay];
+            var pl = Math.hypot(k1[0] - q0[0], k1[1] - q0[1])
+              + Math.hypot(k2[0] - k1[0], k2[1] - k1[1])
+              + Math.hypot(q1[0] - k2[0], q1[1] - k2[1]);
+            var st = Math.min(48, Math.max(8, Math.ceil(pl / 4))), p3 = [];
+            for (var s3 = 0; s3 <= st; s3++) {
+              var t3 = s3 / st, u3 = 1 - t3;
+              var g0 = u3 * u3 * u3, g1 = 3 * u3 * u3 * t3, g2 = 3 * u3 * t3 * t3, g3 = t3 * t3 * t3;
+              p3.push([
+                g0 * q0[0] + g1 * k1[0] + g2 * k2[0] + g3 * q1[0],
+                g0 * q0[1] + g1 * k1[1] + g2 * k2[1] + g3 * q1[1]
+              ]);
+            }
+            dst.push(p3);
           }
         });
         var flat = function (polys) {

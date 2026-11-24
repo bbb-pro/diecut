@@ -75,6 +75,27 @@ function parseGeo(box) {
       const pts = [];
       for (let j = 2; j < e.length; j += 2) pts.push([e[j] + ax, e[j + 1] + ay]);
       if (pts.length >= 2) dst.push(pts);
+    } else if (type === 3) {
+      /* 三次贝塞尔：[3, style, x0,y0, c1x,c1y, c2x,c2y, x1,y1]
+         上游用它画「上宽下窄」这类盒型的弧形侧边。早期版本只认 0/1/2，
+         type 3 被静默丢弃 → 图上尖角断开、看着像少了几条线（L054A/L054B）。
+         采样成折线后照样交给 Douglas-Peucker 化简。 */
+      const p0 = [e[2] + ax, e[3] + ay], c1 = [e[4] + ax, e[5] + ay];
+      const c2 = [e[6] + ax, e[7] + ay], p1 = [e[8] + ax, e[9] + ay];
+      const poly = Math.hypot(c1[0] - p0[0], c1[1] - p0[1])
+        + Math.hypot(c2[0] - c1[0], c2[1] - c1[1])
+        + Math.hypot(p1[0] - c2[0], p1[1] - c2[1]);
+      const steps = Math.min(48, Math.max(8, Math.ceil(poly / 4)));
+      const pts = [];
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps, u = 1 - t;
+        const b0 = u * u * u, b1 = 3 * u * u * t, b2 = 3 * u * t * t, b3 = t * t * t;
+        pts.push([
+          b0 * p0[0] + b1 * c1[0] + b2 * c2[0] + b3 * p1[0],
+          b0 * p0[1] + b1 * c1[1] + b2 * c2[1] + b3 * p1[1]
+        ]);
+      }
+      dst.push(pts);
     }
   }
 

@@ -132,6 +132,25 @@ function buildGeometry(box) {
       const pts = [];
       for (let j = 2; j < e.length; j += 2) pts.push([e[j] + absOx, e[j + 1] + absOy]);
       if (pts.length >= 2) (style === 0 ? cuts : creases).push(pts);
+    } else if (type === 3) {
+      /* 三次贝塞尔：[3, style, x0,y0, c1x,c1y, c2x,c2y, x1,y1]
+         上游用它画弧形侧边（上宽下窄型等）。漏了这个 type，曲线段整段消失。 */
+      const p0 = [e[2] + absOx, e[3] + absOy], c1 = [e[4] + absOx, e[5] + absOy];
+      const c2 = [e[6] + absOx, e[7] + absOy], p1 = [e[8] + absOx, e[9] + absOy];
+      const poly = Math.hypot(c1[0] - p0[0], c1[1] - p0[1])
+        + Math.hypot(c2[0] - c1[0], c2[1] - c1[1])
+        + Math.hypot(p1[0] - c2[0], p1[1] - c2[1]);
+      const steps = Math.min(48, Math.max(8, Math.ceil(poly / 4)));
+      const pts = [];
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps, u = 1 - t;
+        const b0 = u * u * u, b1 = 3 * u * u * t, b2 = 3 * u * t * t, b3 = t * t * t;
+        pts.push([
+          b0 * p0[0] + b1 * c1[0] + b2 * c2[0] + b3 * p1[0],
+          b0 * p0[1] + b1 * c1[1] + b2 * c2[1] + b3 * p1[1]
+        ]);
+      }
+      (style === 0 ? cuts : creases).push(pts);
     }
   }
 
