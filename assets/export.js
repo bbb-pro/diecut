@@ -262,6 +262,7 @@
     var svg = standalone(meta, 0);
     var vb = parseVB(svg);
     var w = vb.w, h = vb.h;
+    var fname = fileBase(meta);
 
     var tipHtml = (V2.isEn && V2.isEn())
       ? 'When printing, set <b>Scale</b> to <b>100% (actual size)</b>, pick a <b>custom paper size matching the drawing</b> and choose <b>Save as PDF</b> as the target. The drawing measures ' + w.toFixed(1) + ' × ' + h.toFixed(1) + ' mm.'
@@ -271,7 +272,7 @@
     var html = '<!doctype html><html lang="' + (V2.LANG === 'en' ? 'en' : 'zh-CN') + '"><head><meta charset="utf-8">' +
       /* 标题就是「另存为 PDF」时的默认文件名 —— 跟其他格式统一成
          编号_盒型名_当前尺寸mm，别再是「名字 + 编号」 */
-      '<title>' + V2.esc(fileBase(meta)) + '</title><style>' +
+      '<title>' + V2.esc(fname) + '</title><style>' +
       '@page{size:' + w.toFixed(1) + 'mm ' + h.toFixed(1) + 'mm;margin:0}' +
       'html,body{margin:0;padding:0;background:#fff}' +
       'svg{display:block;width:' + w.toFixed(1) + 'mm;height:' + h.toFixed(1) + 'mm}' +
@@ -283,6 +284,21 @@
       '<div id="tip">' + tipHtml + '</div>' +
       '</body></html>';
 
+    /* 「另存为 PDF」的默认文件名，各内核取值不一样：
+       Firefox / Safari 取被打印文档的 <title>（下面那段 html 已经设好），
+       Chrome / Edge 取**顶层**文档的标题 —— 不临时顶掉的话，文件名会变成整条网页标题
+       （「… 刀模展开图 · 内_制造_外尺寸对照与 SVG·DXF 下载 - 通用包装盒型库.pdf」）。
+       所以两边都改成同一份 fname，打印结束（确定或取消）立刻还原。 */
+    var oldTitle = document.title, titleDone = false;
+    function restoreTitle() {
+      if (titleDone) return;
+      titleDone = true;
+      try { document.title = oldTitle; } catch (e) {}
+    }
+    document.title = fname;
+    if (window.addEventListener) window.addEventListener('afterprint', restoreTitle, { once: true });
+    setTimeout(restoreTitle, 180000);   /* 兜底：afterprint 万不触发也别一直挂着 */
+
     var fr = document.createElement('iframe');
     fr.setAttribute('aria-hidden', 'true');
     fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
@@ -292,6 +308,7 @@
       var win = fr.contentWindow;
       if (!win) {
         if (fr.parentNode) fr.parentNode.removeChild(fr);
+        restoreTitle();
         return resolve({ ok: false, reason: '当前浏览器不支持内嵌打印，请改用 SVG 或 PNG 导出' });
       }
       var doc = fr.contentDocument || win.document;
@@ -302,9 +319,14 @@
       setTimeout(function () {
         try {
           win.focus();
+          var t0 = Date.now();
           win.print();
           resolve({ ok: true, w: w, h: h });
+          /* Chromium 的 print() 是阻塞的，走到这里对话框已经关掉（确定或取消），
+             可以安全还原标题；非阻塞内核就等上面的 afterprint */
+          if (Date.now() - t0 > 300) restoreTitle();
         } catch (e) {
+          restoreTitle();
           resolve({ ok: false, reason: '打印失败：' + e.message });
         }
         setTimeout(function () { if (fr.parentNode) fr.parentNode.removeChild(fr); }, 90000);
