@@ -46,13 +46,14 @@ function hashSources() {
   }
   if (fs.existsSync(path.join(assetsDir, 'style.css'))) files.push(path.join('assets', 'style.css'));
 
-  // 数据脚本（catalog + 13 个几何分片）—— 结构变了同样会让旧 JS 读崩
+  // 数据脚本（catalog + 13 个几何分片 + 13 个盒型信息分片）—— 结构变了同样会让旧 JS 读崩
   const dataDir = path.join(ROOT, 'data');
   if (fs.existsSync(path.join(dataDir, 'catalog.js'))) files.push(path.join('data', 'catalog.js'));
-  const geoDir = path.join(dataDir, 'geo');
-  if (fs.existsSync(geoDir)) {
-    for (const n of fs.readdirSync(geoDir).filter((n) => n.endsWith('.js')).sort()) {
-      files.push(path.join('data', 'geo', n));
+  for (const sub of ['geo', 'info']) {
+    const d = path.join(dataDir, sub);
+    if (!fs.existsSync(d)) continue;
+    for (const n of fs.readdirSync(d).filter((x) => x.endsWith('.js')).sort()) {
+      files.push(path.join('data', sub, n));
     }
   }
 

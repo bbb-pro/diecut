@@ -23,6 +23,23 @@ const OUT_DIR = path.join(ROOT, 'box');
 // 英文站：/en/ 是入口，/en/box/ 是盒型库，盒型页在 /en/box/<ID>/
 const EN_ROOT = path.join(ROOT, 'en');
 const EN_DIR = path.join(EN_ROOT, 'box');
+
+/* ---------------- 盒型信息（名称 / 适用场景 / 结构材质 / 结构说明） ----------------
+   来源 boxinfo_raw.json（fetch_boxinfo.mjs 抓的上游详情页），清洗规则与
+   data/info 分片共用 tools/boxinfo-lib.js，两边不会说两套话。
+   ❗ 文件缺失时整块降级为空对象 —— 页面照旧生成，不会因为少个数据源就崩。 */
+const INFO_LIB = require('./tools/boxinfo-lib.js');
+const INFO_RAW = (() => {
+  const p = path.join(ROOT, 'boxinfo_raw.json');
+  if (!fs.existsSync(p)) {
+    console.warn('⚠ 未找到 boxinfo_raw.json：静态页将退回旧的 tags 文案');
+    return {};
+  }
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) {
+    console.warn('⚠ boxinfo_raw.json 解析失败，退回旧的 tags 文案:', e.message);
+    return {};
+  }
+})();
 const BASE = 'https://057300.xyz/diecut';
 const TODAY = new Date().toISOString().slice(0, 10);
 // 站点最后实质性改版日期（GEO 用）。**改模板/文案时手动更新**——别用 TODAY，
@@ -196,6 +213,27 @@ function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/* 按整句截断（meta description 用）—— 句中截断会读起来像被打断 */
+function clipSentences(s, max) {
+  const str = String(s || '').replace(/\s+/g, ' ').trim();
+  if (!str) return '';
+  if (str.length <= max) return str;
+  const parts = str.split(/(?<=[。；;])/);
+  let out = '';
+  for (const p of parts) {
+    if ((out + p).length > max) break;
+    out += p;
+  }
+  if (out) return out;
+  return str.slice(0, max).replace(/[，,、]$/, '') + '…';
+}
+
+/* 结构说明正文：上游是「特点：1 …。2 …。3 …」的连排编号，按编号断行，
+   否则 800 字糊成一团。返回的是**已转义**的 HTML。 */
+function descHtml(s) {
+  return esc(s).replace(/([。；;：:])\s*(?=\d+\s)/g, '$1<br>');
 }
 
 /* ---------------- 流量统计（全站页面统一注入）：百度统计 + 51.LA ----------------
@@ -567,9 +605,17 @@ function main() {
     const hasGeom = geo.cuts.length + geo.creases.length >= 2;
     if (!hasGeom) noGeom++;
 
-    const titleTag = tags[0] || (cats[0] || '纸盒').replace(/^[A-Za-z]{1,2}\./, '');
-    const title = id + ' 盒型刀模图 - ' + titleTag + ' | 纸盒刀模库';
-    const desc = id + '（' + (tags.slice(0, 3).join('、') || '纸盒盒型') + '）刀模展开图，' +
+    const inf = INFO_LIB.buildRecord(id, INFO_RAW[id], tags, (boxes[id] || {}).name || '');
+
+    /* 盒型名：优先上游详情页的「盒型名称」（与 catalog 的 name 同一个清洗函数），
+       拿不到才退回 tokens[0]。旧版这里写的是 tags[0]，A038/A001X 会撞同一个名字。 */
+    const dispName = inf.n || tags[0] || (cats[0] || '未分类盒型').replace(/^[A-Za-z]{1,2}\./, '');
+    const titleTag = inf.n || tags[0] || (cats[0] || '未分类盒型').replace(/^[A-Za-z]{1,2}\./, '');
+    const title = dispName + '（' + id + '）刀模展开图 · 内/制造/外尺寸对照 | 纸盒刀模库';
+    /* 描述用上游真实描述的首段（截到整句），不再拿 tags 拼关键词 —— 那是 SEO 话术，
+       对搜索者没有信息量。尺寸与线数这些硬信息照旧缀在后面。 */
+    const desc = id + '（' + dispName + '）刀模展开图，' +
+      (inf.d ? clipSentences(inf.d, 70) + ' ' : '') +
       '默认展开尺寸 ' + w + ' × ' + h + ' mm，共 ' + geo.cuts.length + ' 条切割线、' +
       geo.creases.length + ' 条压痕线。可在线调整长宽高实时重算刀模，并导出 SVG / DXF / PDF。';
 
@@ -577,13 +623,24 @@ function main() {
     const cat = primaryCat(meta[id] ? meta[id].mask : 0);
     const rel = (byCat[cat] || []).filter((x) => x !== id).slice(0, 10);
 
-    const html = renderPage({
+    const pageOpts = {
       id, box, geo, w, h, tags, cats, editable, rel, title, desc, hasGeom,
+      info: inf,
       mask   // 英文页分类名（CAT_EN）依赖它；漏传会让 en 标题集体退化成 Uncategorized
-    });
+    };
     const dir = path.join(OUT_DIR, id);
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'index.html'), html);
+    fs.writeFileSync(path.join(dir, 'index.html'), renderPage(pageOpts, 'zh'));
+
+    /* 英文页：同一套模板，语言分支在 renderPage 内部（enCopy 用真实几何拼标题/描述/FAQ，
+       不做中文硬翻）。
+       ❗❗ 这里必须真的生成 —— main() 开头 rmSync(EN_ROOT) 会把 en/ 整棵删掉，
+       「只删不建」等于每次跑生成器就让 1295 个英文盒型页集体 404。
+       2026-11-27 发现该循环曾经丢失，CI 的每月同步一旦跑起来就会清空英文站。 */
+    const dirEn = path.join(EN_DIR, id);
+    fs.mkdirSync(dirEn, { recursive: true });
+    fs.writeFileSync(path.join(dirEn, 'index.html'), renderPage(pageOpts, 'en'));
+
     count++;
   }
 
@@ -663,7 +720,11 @@ function locAlt(uZh, uEn, pri) {
 function renderPage(o, lang) {
   lang = lang || 'zh';
   const en = lang === 'en';
-  const { id, box, geo, w, h, tags, cats, editable, rel, hasGeom } = o;
+  const { id, box, geo, w, h, tags, cats, editable, rel, hasGeom, info } = o;
+  const inf = info || {};
+  const dispName = inf.n || tags[0] || (cats[0] || '未分类盒型').replace(/^[A-Za-z]{1,2}\./, '');
+  const scene = inf.u ? inf.u.split(',') : [];
+  const struct = inf.s ? inf.s.split(',') : [];
 
   // 中文页在 /box/<ID>/，英文页在 /en/box/<ID>/ —— 站内相对路径按这个前提写
   const langRoot = en ? BASE + '/en' : BASE;   // /diecut/en 或 /diecut
@@ -712,7 +773,12 @@ function renderPage(o, lang) {
       ? '<tr><td colspan="2">This box type has no open editing parameters</td></tr>'
       : '<tr><td colspan="3">该盒型无开放编辑参数</td></tr>');
 
-  const tagChips = tags.map((t) => '<span class="chip">' + esc(t) + '</span>').join('');
+  /* 结构与用途：场景来自描述提炼（点不进去，只做展示线索），
+     结构/材质来自标签 —— 静态页不做交互，都用纯 chip。 */
+  const chipHtml = (arr) => arr.map((t) => '<span class="chip">' + esc(t) + '</span>').join('');
+  const sceneChips = chipHtml(scene);
+  const structList = struct.length ? struct : tags.filter((t) => !INFO_LIB.SEO_WORD.test(t)).slice(0, 10);
+  const structChips = chipHtml(structList);
 
   const relLinks = rel.map((r) =>
     '<a href="../' + encodeURIComponent(r) + '/">' + esc(r) + '</a>').join('\n      ');
@@ -729,7 +795,7 @@ function renderPage(o, lang) {
       : [
         { '@type': 'ListItem', position: 1, name: '纸盒刀模设计器', item: BASE + '/' },
         { '@type': 'ListItem', position: 2, name: '盒型库', item: BASE + '/box/' },
-        { '@type': 'ListItem', position: 3, name: id + ' 盒型刀模图', item: url }
+        { '@type': 'ListItem', position: 3, name: dispName + '（' + id + '）刀模展开图', item: url }
       ]
   };
 
@@ -741,6 +807,7 @@ function renderPage(o, lang) {
     '@id': url + '#page',
     url: url,
     name: title,
+    description: desc,
     inLanguage: en ? 'en' : 'zh-CN',
     dateModified: SITE_MOD,
     isPartOf: { '@id': BASE + '/#website' },
@@ -753,14 +820,12 @@ function renderPage(o, lang) {
   const enUrl = BASE + '/en/box/' + encodeURIComponent(id) + '/';
   const altHtml = altLinks(id);
 
-  // 英文页不输出中文标签云（英文读者看不懂，且中英混排拉低可读性）
-  const tagChipsEn = '';
-
   const kw = en
     ? (isFefco(id)
       ? [id, 'FEFCO ' + id, id + ' box template', 'corrugated carton', 'die-cut template', 'packaging box'].join(', ')
       : [id, id + ' box template', 'packaging box template', 'die-cut template'].join(', '))
-    : [id, id + '刀模', id + '盒型'].concat(tags.slice(0, 6)).join(',');
+    : [id, dispName, dispName + '刀模', id + '刀模']
+      .concat(scene).concat(struct.slice(0, 4)).join(',');
 
   // 英文页在 /en/box/<ID>/，「中文版」得退三级回站点根才能到 /box/<ID>/。
   // 早期版本写成 '../../box/<ID>/' 会解析成 /en/box/<ID>/ —— 等于链回自己。
@@ -801,10 +866,11 @@ function renderPage(o, lang) {
     (en ? 'Box library' : '盒型库') + '</a> &rsaquo; ' +
     esc(catText) + ' &rsaquo; <strong>' + esc(id) + '</strong></nav>\n' +
 
-    '<h1>' + esc(en ? cp.h1 : (id + ' 盒型刀模图')) + '</h1>\n' +
+    '<h1>' + esc(en ? cp.h1 : (dispName + '（' + id + '）刀模展开图')) + '</h1>\n' +
     '<p class="lead">' + (en ? esc(cp.lead) : (
-      esc(id) + ' 属于 ' + esc(catText) + ' 类盒型' +
-      (tags.length ? '，结构关键词：' + esc(tags.slice(0, 5).join('、')) : '') +
+      esc(id) + '（' + esc(dispName) + '）属于 ' +
+      esc(cats.map((c) => c.replace(/^[A-Za-z]{1,2}\.\s*/, '')).join('、') || catText) + ' 类盒型' +
+      (scene.length ? '，常见用途：' + esc(scene.join('、')) : '') +
       '。默认展开尺寸 ' + w + ' × ' + h + ' mm，含 ' + geo.cuts.length + ' 条切割线、' +
       geo.creases.length + ' 条压痕线。下图为按默认参数计算的刀模展开图' +
       (op ? '（' + esc(op) + '）' : '') +
@@ -839,11 +905,20 @@ function renderPage(o, lang) {
       esc(op) + '</code></td></tr>\n' : '') +
     '  </tbody>\n</table>\n' +
 
+    /* 结构说明：上游人工撰写的成段说明，放在「结构信息」之后。
+       这是整页信息量最高的一段（怎么成型、哪里锁合、适合装什么），
+       也是把详情页从「模板句 + 一张图」变成真内容的关键。 */
+    (en ? '' : (inf.d ? '<h2>结构说明</h2>\n<p class="desc">' + descHtml(inf.d) + '</p>\n' : '')) +
+
     (en
       ? '<h2>' + cp.secFaq + '</h2>\n<div class="faq">\n' +
         cp.faq.map(([q, a]) =>
           '  <h3>' + esc(q) + '</h3>\n  <p>' + esc(a) + '</p>\n').join('') + '</div>\n'
-      : (tagChips ? '<h2>结构与用途标签</h2>\n<div class="chips">' + tagChips + '</div>\n' : '')) +
+      : ((sceneChips || structChips)
+        ? '<h2>结构与用途</h2>\n' +
+          (sceneChips ? '<h3>适用场景</h3>\n<div class="chips">' + sceneChips + '</div>\n' : '') +
+          (structChips ? '<h3>结构 / 材质</h3>\n<div class="chips">' + structChips + '</div>\n' : '')
+        : '')) +
 
     (rel.length ? '<h2>' + (en ? cp.secRel : '同类盒型') + '</h2>\n<div class="rel">\n      ' +
       relLinks + '\n</div>\n' : '') +
@@ -1247,7 +1322,9 @@ const CSS = 'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingF
   'max-width:960px;margin:0 auto;padding:20px 16px 48px;line-height:1.7;color:#1f2328;background:#fff}\n' +
   'h1{font-size:24px;font-weight:600;margin:12px 0}\n' +
   'h2{font-size:18px;font-weight:600;margin:28px 0 10px;padding-bottom:6px;border-bottom:1px solid #e5e7eb}\n' +
+  'h3{font-size:15px;font-weight:600;margin:16px 0 6px;color:#333}\n' +
   '.lead{color:#444;font-size:15px}\n' +
+  '.desc{color:#444;font-size:14.5px;line-height:1.85;margin:10px 0}\n' +
   '.crumb{font-size:13px;color:#666;margin-bottom:8px}\n' +
   '.crumb a{color:#0969da;text-decoration:none}\n' +
   '.fig{border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin:16px 0;background:#fafbfc;overflow:auto}\n' +

@@ -73,6 +73,24 @@
 
   V2.geoOf = function (id) { return (window.V2_GEO || {})[id]; };
 
+  /* 盒型信息分片（名称 / 适用场景 / 结构材质 / 结构说明）——
+     与 geo **完全同号**（都用 catalog 的 ch），详情页只多请求自己那一片（60~130 KB）。
+     ❗ 列表页不加载它：13 片合计 1.2 MB，塞进首屏等于把 0.5 MB 的 catalog 再翻两倍。 */
+  V2.loadInfoChunk = function (i) {
+    var f = String(i).padStart(2, '0');
+    return loadScript(BASE + 'info/' + f + '.js');
+  };
+
+  /** 确保某盒型的信息已就绪（已加载过同片则直接 resolve） */
+  V2.ensureInfo = function (box) {
+    var id = box && box.id;
+    if (id && window.V2_INFO && window.V2_INFO[id]) return Promise.resolve();
+    var i = box && box.ch != null ? box.ch : 0;
+    return V2.loadInfoChunk(i);
+  };
+
+  V2.infoOf = function (id) { return (window.V2_INFO || {})[id]; };
+
   /* ---------------- 配色 / 线宽 ---------------- */
 
   /* 注意：这两个字体栈会写进 style="..." 属性里，只能用单引号，

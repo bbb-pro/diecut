@@ -1,7 +1,9 @@
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;max-width:960px;margin:0 auto;padding:20px 16px 48px;line-height:1.7;color:#1f2328;background:#fff}
 h1{font-size:24px;font-weight:600;margin:12px 0}
 h2{font-size:18px;font-weight:600;margin:28px 0 10px;padding-bottom:6px;border-bottom:1px solid #e5e7eb}
+h3{font-size:15px;font-weight:600;margin:16px 0 6px;color:#333}
 .lead{color:#444;font-size:15px}
+.desc{color:#444;font-size:14.5px;line-height:1.85;margin:10px 0}
 .crumb{font-size:13px;color:#666;margin-bottom:8px}
 .crumb a{color:#0969da;text-decoration:none}
 .fig{border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin:16px 0;background:#fafbfc;overflow:auto}

@@ -1186,3 +1186,48 @@ button, input, select { font-family: inherit; font-size: inherit; color: inherit
   text-overflow: ellipsis;
   vertical-align: top;
 }
+
+/* ===== 详情页「结构与用途」（2026-11-27） =====
+   数据源换成上游盒型描述后，这一栏拆成「适用场景 / 结构材质 / 结构说明」三块。
+   .tag-static 是纯展示标签（场景词点了也筛不全，所以不给链接）。 */
+.tag-group + .tag-group { margin-top: 11px; }
+.tag-lb {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: .02em;
+}
+.tag-tip { font-weight: 400; font-size: 11px; color: var(--muted); opacity: .78; }
+.tag-static { cursor: default; }
+.tag-static:hover { background: #f2f4f7; color: var(--text-2); }
+
+.desc-fold {
+  margin-top: 13px;
+  padding-top: 11px;
+  border-top: 1px solid var(--border);
+}
+.desc-fold > summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-2);
+  list-style: none;
+}
+.desc-fold > summary::-webkit-details-marker { display: none; }
+.desc-fold > summary::after { content: '展开'; font-size: 11.5px; font-weight: 400; color: var(--muted); }
+.desc-fold[open] > summary::after { content: '收起'; }
+.desc-fold[open] > summary { margin-bottom: 9px; }
+.desc-body {
+  font-size: 12.5px;
+  line-height: 1.9;
+  color: var(--text-2);
+  white-space: pre-wrap;        /* JS 按「1 2 3」编号断行，靠它生效 */
+  word-break: break-word;
+}

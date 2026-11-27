@@ -8,7 +8,7 @@
 <meta name="robots" content="noindex">
 <link rel="icon" href="../favicon.ico" sizes="any">
 <link rel="icon" href="../favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="../assets/style.css?v=d6a1d68478">
+<link rel="stylesheet" href="../assets/style.css?v=d6c7c4f8d6">
 <style>
   .sug-box {
     position: absolute; top: calc(100% + 6px); left: 0; right: 0;
@@ -317,9 +317,25 @@ crossorigin="anonymous"></script>
       </div>
     </div>
 
-    <div class="panel">
-      <div class="panel-head"><h2>用途标签</h2></div>
-      <div class="panel-body"><div class="tag-cloud" id="tags"></div></div>
+    <!-- 结构与用途：数据来自上游盒型描述（data/info 分片），不再是关键词串过滤后的残留。
+         场景只做展示 —— 它是从描述里提炼的，点了也筛不全（描述里的行业词大多不在 tags 里）；
+         结构/材质词本身就是 tags，所以保留点击按关键词筛选。 -->
+    <div class="panel" id="tagPanel">
+      <div class="panel-head"><h2>结构与用途</h2></div>
+      <div class="panel-body">
+        <div class="tag-group" id="grpScene" hidden>
+          <div class="tag-lb">适用场景</div>
+          <div class="tag-cloud" id="tags"></div>
+        </div>
+        <div class="tag-group" id="grpStruct" hidden>
+          <div class="tag-lb">结构 / 材质<span class="tag-tip">点标签可筛选</span></div>
+          <div class="tag-cloud" id="tagStructCloud"></div>
+        </div>
+        <details class="desc-fold" id="grpDesc" hidden>
+          <summary>结构说明</summary>
+          <div class="desc-body" id="boxDesc"></div>
+        </details>
+      </div>
     </div>
 
   </aside>
@@ -330,10 +346,10 @@ crossorigin="anonymous"></script>
   <div class="related-row" id="relatedRow"></div>
 </div>
 
-<script src="../assets/i18n.js?v=d6a1d68478"></script>
-<script src="../assets/common.js?v=d6a1d68478"></script>
-<script src="../assets/export.js?v=d6a1d68478"></script>
-<script src="../assets/detail.js?v=d6a1d68478"></script>
+<script src="../assets/i18n.js?v=d6c7c4f8d6"></script>
+<script src="../assets/common.js?v=d6c7c4f8d6"></script>
+<script src="../assets/export.js?v=d6c7c4f8d6"></script>
+<script src="../assets/detail.js?v=d6c7c4f8d6"></script>
 <script>
 /* 顶栏语言入口：
    中文页 → 对应盒型的英文静态页（/en/box/<ID>/，SEO 落地页 + 英文设计器入口）；

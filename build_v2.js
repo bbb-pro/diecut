@@ -29,6 +29,27 @@ const CHUNK_SIZE = 100;
 /** 这些标签太笼统，不适合当盒型名 */
 const GENERIC_TAG = /^(免费|其他|BQ|彩盒|纸盒|包装盒|包装设计)$/;
 
+/* ============ 盒型名：优先用上游详情页的「盒型名称」 ============
+   老逻辑是「tags 里第一个不笼统的词」，那只是关键词串的第一段，
+   A038 与 A001X 这种结构不同的盒型会撞同一个名字。
+   上游 /Online/Design/{id} 的「盒型名称」也是关键词串，但排序更有讲究
+   （A038 → 「双插盒,内隔层,锁扣,…」），经 cleanName 清洗后区分度明显更好。
+   ❗ 拿不到就退回老逻辑，绝不为了「统一」把名字写成空。 */
+const INFO_LIB = require('./tools/boxinfo-lib.js');
+const INFO_RAW = (() => {
+  const p = path.join(ROOT, 'boxinfo_raw.json');
+  if (!fs.existsSync(p)) return {};
+  try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) {
+    console.warn('⚠ boxinfo_raw.json 解析失败，退回 tags 取名:', e.message);
+    return {};
+  }
+})();
+function upstreamName(id) {
+  const r = INFO_RAW[id];
+  if (!r) return '';
+  return INFO_LIB.cleanName(r.name) || INFO_LIB.nameFromDesc(r.desc) || '';
+}
+
 /* ================= 载入源数据 ================= */
 
 function loadAll() {
@@ -267,9 +288,11 @@ function main() {
     catCount[cat] = (catCount[cat] || 0) + 1;
 
     const tags = String(box.tags || '').split(',').map((s) => s.trim()).filter(Boolean);
-    let name = '';
-    for (const t of tags) {
-      if (!GENERIC_TAG.test(t)) { name = t; break; }
+    let name = upstreamName(id);
+    if (!name) {
+      for (const t of tags) {
+        if (!GENERIC_TAG.test(t)) { name = t; break; }
+      }
     }
     if (!name) name = (cateName[cat] || '纸盒').replace(/^[A-Za-z]{1,2}\./, '');
     if (name === '免费') name = '未分类盒型';

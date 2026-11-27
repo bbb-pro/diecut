@@ -82,7 +82,7 @@
       ['尺寸口径', syncDimLock],
       ['尺寸对照', renderInfo],
       ['相关盒型', renderRelated],
-      ['用途标签', renderTags],
+      ['结构与用途', renderTags],
       ['导出面板', bindExport]
     ].forEach(function (it) {
       try {
@@ -1243,24 +1243,70 @@
     });
   }
 
-  /* ==================== 标签 & 相关 ==================== */
+  /* ==================== 结构与用途 ==================== */
 
+  /* 数据来自 data/info 分片（由上游盒型描述提炼）：
+       info.u = 适用场景 · info.s = 结构/材质 · info.d = 结构说明全文
+     分片是懒加载的，先用 catalog 的 tags 兜一版，到了再覆盖 —— 加载失败也不会空白。 */
   function renderTags() {
-    /* 英文页：这块标签是上游的中文元数据（「国际标准瓦楞纸箱」「餐椅箱」「卡纸瓦楞纸坑纸盒」…，
-       过滤后仍有 756 个去重词，且大量是 SEO 串），没有可靠译法，硬翻会造出假术语。
-       工具页本身 noindex，隐藏它既不丢 SEO 也不误导用户。中文页照旧。 */
-    var cloud = $('tags');
+    /* 英文页：这块是上游的中文元数据（「卡纸瓦楞纸坑纸盒」「飞机孔悬挂」…），
+       没有可靠译法，硬翻会造出假术语。工具页本身 noindex，隐藏它既不丢 SEO 也不误导用户。 */
     if (V2.LANG === 'en') {
-      var panel = cloud && cloud.closest ? cloud.closest('.panel') : null;
+      var panel = $('tagPanel') || ($('tags') && $('tags').closest ? $('tags').closest('.panel') : null);
       if (panel) panel.style.display = 'none';
       return;
     }
-    /* 过滤掉纯 SEO 关键词 / 关键词串标签（「包装纸箱设计」「玩具包装，电子产品包装」这类对选盒型没帮助） */
-    cloud.innerHTML = (B.tags || []).filter(function (t) {
-      return !V2.isJunkName(t);
-    }).map(function (t) {
-      return '<a class="tag" href="index.html?q=' + encodeURIComponent(t) + '">' + V2.esc(t) + '</a>';
-    }).join('');
+    paintTags(V2.infoOf(ID));
+    V2.ensureInfo(B).then(function () {
+      paintTags(V2.infoOf(ID));
+    }).catch(function () { /* 分片挂了就保留兜底版，别把整块清空 */ });
+  }
+
+  function paintTags(info) {
+    info = info || {};
+    var scene = info.u ? info.u.split(',') : [];
+    var struct = info.s ? info.s.split(',') : [];
+    var desc = info.d || '';
+
+    /* 分片还没到（或加载失败）→ 退回老逻辑：tags 过滤掉 SEO 词。
+       覆盖比新版粗，但总比空白强。 */
+    if (!scene.length && !struct.length && !desc) {
+      struct = (B.tags || []).filter(function (t) { return !V2.isJunkName(t); }).slice(0, 10);
+    }
+
+    /* 场景只做展示：它是从描述里提炼的，而描述里的行业词大多不在 tags 里，
+       做成搜索链接会「点进去只剩几十个」（化妆品实际适用 348 个、tags 只覆盖 45 个）。 */
+    paintGroup('grpScene', scene.length, function (host) {
+      host.innerHTML = scene.map(function (t) {
+        return '<span class="tag tag-static">' + V2.esc(t) + '</span>';
+      }).join('');
+    });
+
+    /* 结构/材质词都来自 tags，点进去一定搜得到，保留筛选链接 */
+    paintGroup('grpStruct', struct.length, function (host) {
+      host.innerHTML = struct.map(function (t) {
+        return '<a class="tag" href="index.html?q=' + encodeURIComponent(t) + '">' + V2.esc(t) + '</a>';
+      }).join('');
+    });
+
+    paintGroup('grpDesc', !!desc, function (host) {
+      /* 上游是「特点：1 …。2 …。3 …」这种连排编号，按编号断行，不然 800 字一团 */
+      host.textContent = desc.replace(/([。；;])\s*(?=\d+\s)/g, '$1\n');
+    });
+
+    /* 三块全空 → 整块面板收起，不留空壳 */
+    var panel = $('tagPanel');
+    if (panel) panel.hidden = !(scene.length || struct.length || desc);
+  }
+
+  function paintGroup(id, has, fill) {
+    var el = $(id);
+    if (!el) return;
+    el.hidden = !has;
+    if (!has) return;
+    var host = id === 'grpDesc' ? $('boxDesc')
+      : id === 'grpScene' ? $('tags') : $('tagStructCloud');
+    if (host) fill(host);
   }
 
   function renderRelated() {

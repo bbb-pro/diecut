@@ -7,12 +7,14 @@
  *   node sync_boxlib.js --force            # 几何全量重下（慢，约 1294 次请求）
  *   node sync_boxlib.js --skip-thumbs      # 跳过缩略图（本地网络慢时用）
  *   node sync_boxlib.js --skip-geo         # 只刷新清单，不抓几何
- *   node sync_boxlib.js --only=thumbs      # 只跑某一步（lib|build|pages|thumbs）
+ *   node sync_boxlib.js --only=thumbs      # 只跑某一步（lib|info|build|infojs|pages|thumbs）
  *
  * 链路（每一步都能单独重跑、幂等）：
  *   1. download_all_boxes.js --refresh-lib   上游清单 + 缺失几何 → packmage_boxlib_zh.js / packmage_data.js
+ *   1b. fetch_boxinfo.mjs                    上游详情页「名称/标签/描述」→ boxinfo_raw.json（增量）
  *   2. build_v2.js                           → data/catalog.js + data/geo/NN.js
- *   3. build_box_pages.js                    → box/<ID>/index.html ×N + box/index.html + sitemap.xml
+ *   2b. build_boxinfo.js                     → data/info/NN.js（适用场景 / 结构材质 / 结构说明）
+ *   3. build_box_pages.js                    → box/<ID>/ + en/box/<ID>/ + sitemap.xml
  *   4. tools/fetch_thumbs.py                 → data/thumbs/{id}-M.png（只补缺）
  *
  * 说明：产物必须进仓库（静态站点直接读），所以本脚本不负责 commit/push，
@@ -37,7 +39,11 @@ const PY = process.env.PYTHON || (IS_WIN ? 'python' : 'python3');
 
 const STEPS = [
   { key: 'lib',    name: '① 同步清单 + 几何', script: [NODE, ['download_all_boxes.js', '--refresh-lib'].concat(has('--force') ? ['--force'] : [])] },
+  /* 盒型信息（名称/标签/描述）必须排在 build_v2 之前：catalog 的盒型名要用它，
+     build_boxinfo 又要读 catalog 的分片号，所以两步夹在 build_v2 前后。 */
+  { key: 'info',   name: '①b 抓盒型信息',    script: [NODE, ['fetch_boxinfo.mjs'].concat(has('--force') ? ['--force'] : [])] },
   { key: 'build',  name: '② 编译前端数据',   script: [NODE, ['build_v2.js']] },
+  { key: 'infojs', name: '②b 生成信息分片',  script: [NODE, ['build_boxinfo.js']] },
   { key: 'pages',  name: '③ 生成 SEO 落地页', script: [NODE, ['build_box_pages.js']] },
   { key: 'thumbs', name: '④ 抓立体缩略图',   script: [PY,   ['tools/fetch_thumbs.py', '--allow-missing']] },
 ];
